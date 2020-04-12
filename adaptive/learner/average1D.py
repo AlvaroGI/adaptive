@@ -10,7 +10,6 @@ from adaptive.learner.learner1D import Learner1D, _get_neighbors_from_list, loss
 from adaptive.notebook_integration import ensure_holoviews
 
 
-@add_average_mixin
 class AverageLearner1D(Learner1D):
     """Learns and predicts a noisy function 'f:ℝ → ℝ^N'.
 
@@ -19,20 +18,35 @@ class AverageLearner1D(Learner1D):
     delta : float
         The minimum value of the mean error.
     """
-    def __init__(self, function, bounds, loss_per_interval=None, delta=0.1):
+    def __init__(self, function, bounds, loss_per_interval=None, delta=0.1, min_samples=5):
         super().__init__(function, bounds, loss_per_interval)
 
-        self._data_samples = {} # This dictionary contains all samples f(x) for each x
-                                # in the form {x:[f_0(x), f_1(x), ...]}
-        self._mean_error = {} # This dictionary contains the estimation errors for
-                              # each fbar(x) in the form {estimation_error(x): x}
+        self._data_samples = {} # This SortedDict contains all samples f(x) for each x
+                                # in the form {x0:[f_0(x0), f_1(x0), ...]}
+        self._number_samples = {} # This SortedDict contains the number of samples
+                                  # for each x in the form {n0: x0, n1: x1}
+        self.min_samples = min_samples
+
+        self._mean_error = {} # This SortedDict contains the estimation errors for
+                              # each fbar(x) in the form {estimation_error(x0): x0}
         self.delta = delta
+
+        print('__init__ ok!')
+
 
     def ask(self, n, tell_pending=True):
         """Return 'n' points that are expected to maximally reduce the loss."""
         assert isinstance(self._mean_error, dict)
-        if self._mean_error.peekitem(-1) > self.delta:
-            _, x = self._mean_error.popitem()
+        assert isinstance(self._number_samples, dict)
+
+        if not self._mean_error.__len__():
+            points, loss_improvements = self._ask_points_without_adding(n)
+        elif self._number_samples.peekitem(0) < self.min_samples:
+            _, x = self._mean_error.popitem(0)
+            print('NEW ASK')
+            points, loss_improvements = self._ask_for_more_samples(x,n)
+        elif self._mean_error.peekitem(-1) > self.delta:
+            _, x = self._mean_error.popitem(-1)
             print('NEW ASK')
             points, loss_improvements = self._ask_for_more_samples(x,n)
         else:
@@ -45,10 +59,27 @@ class AverageLearner1D(Learner1D):
         return points, loss_improvements
 
     def _ask_for_more_samples(self,x,n):
-        print('Not implemented yet')
-        points = 0
-        loss_improvements = 0
+        points = [x] * n
+        loss_improvements = [0] * n
+        print('loss_improvements not implemented yet')
         return points, loss_improvements
+
+    def tell_pending(self, x):
+        # Even if x is in self._data, we can sample it again
+        # if x in self._data:
+        #     # The point is already evaluated before
+        #     return
+        self.pending_points.add(x) # Note that a set cannot contain duplicates
+        if x not in self._data:
+            self._update_neighbors(x, self.neighbors_combined)
+            self._update_losses(x, real=False)
+
+    def tell(self, x, y):
+        if x in self._data:
+            print('Not implemented yet!')
+            return
+        else:
+            super().tell(x,y)
 
     # def _ask_points_without_adding(self, n):
     #     points, loss_improvements = super()._ask_points_without_adding(n)
