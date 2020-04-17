@@ -13,7 +13,7 @@ from scipy.integrate import quad
 
 from random import random
 
-def error_averagelearner1D_vs_uniform(fun,bounds,delta,min_samples,N,interp='linear'):
+def error_averagelearner1D_vs_uniform(fun,bounds,delta,min_samples,alfa,N,interp='linear'):
     '''Returns:
         -the L1-error between AverageLearner1D and the function without noise
         -the number of samples of the AverageLearner1D
@@ -30,7 +30,7 @@ def error_averagelearner1D_vs_uniform(fun,bounds,delta,min_samples,N,interp='lin
         print('fun has no argument `sigma´ that accounts for the noise.')
 
     # Define and run AverageLearner1D
-    learner = AverageLearner1D(fun, bounds=bounds, delta=delta, min_samples=min_samples)
+    learner = AverageLearner1D(fun, bounds=bounds, delta=delta, min_samples=min_samples, alfa=alfa)
     for _ in np.arange(N):
             xs, _ = learner.ask(1)
             for x in xs:
@@ -40,9 +40,10 @@ def error_averagelearner1D_vs_uniform(fun,bounds,delta,min_samples,N,interp='lin
     N_adaptive = learner.total_samples()
 
     # Define and run uniform learner
-    x_uniform = np.linspace(-1,1,np.ceil(N_adaptive/min_samples))
-    learner_uniform = AverageLearner1D(fun, bounds=bounds, delta=delta, min_samples=min_samples)
-    for _ in np.arange(min_samples):
+    unif_samples_per_point = learner.total_samples()/len(learner.data)
+    x_uniform = np.linspace(bounds[0],bounds[1],np.ceil(N_adaptive/unif_samples_per_point))
+    learner_uniform = AverageLearner1D(fun, bounds=bounds, delta=delta, min_samples=min_samples, alfa=alfa)
+    for _ in np.arange(unif_samples_per_point):
         for xx in x_uniform:
             yy = learner_uniform.function(xx)
             learner_uniform.tell(xx,yy)
@@ -50,8 +51,8 @@ def error_averagelearner1D_vs_uniform(fun,bounds,delta,min_samples,N,interp='lin
     N_uniform = learner_uniform.total_samples()
 
     # Create interpolators
-    f_adaptive = interp1d(x_adaptive, y_adaptive, kind=interp)
-    f_uniform = interp1d(x_uniform, y_uniform, kind=interp)
+    f_adaptive = interp1d(x_adaptive, y_adaptive, kind=interp, fill_value='extrapolate')
+    f_uniform = interp1d(x_uniform, y_uniform, kind=interp, fill_value='extrapolate')
 
     def integrand_adaptive(x):
         return abs(f_adaptive(x)-fun(x,sigma=0))

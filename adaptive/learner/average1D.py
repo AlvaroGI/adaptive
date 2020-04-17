@@ -9,6 +9,8 @@ from copy import deepcopy
 import numpy as np
 import sortedcollections
 import sortedcontainers
+from scipy.stats import t as tstud
+import random
 
 from adaptive.learner.average_mixin import DataPoint, add_average_mixin
 from adaptive.learner.learner1D import Learner1D, _get_neighbors_from_list, loss_manager, _get_intervals
@@ -23,7 +25,7 @@ class AverageLearner1D(Learner1D):
     delta : float
         The minimum value of the mean error.
     """
-    def __init__(self, function, bounds, loss_per_interval=None, delta=0.1, min_samples=5):
+    def __init__(self, function, bounds, loss_per_interval=None, min_samples=3, delta=0.1, alfa=0.025):
         super().__init__(function, bounds, loss_per_interval)
 
         self._data_samples = sortedcontainers.SortedDict() # This SortedDict contains all samples f(x) for each x
@@ -34,37 +36,58 @@ class AverageLearner1D(Learner1D):
                                           # are undersampled
         self.min_samples = min_samples
 
-        self._mean_error = sortedcontainers.SortedDict() # This SortedDict contains the estimation errors for
-                                                         # each fbar(x) in the form {estimation_error(x0): x0}
+        # Relative error between the real losses and the losses calculated
+        # using extreme values of the intervals of confidence
+        self._losses_diff = loss_manager(self._scale[0]) # {x: loss_diff(x)}
+
+        self._error_in_mean = sortedcontainers.SortedDict() # This SortedDict contains the estimation errors for
+                                                            # each fbar(x) in the form {x0: estimation_error(x0)}
         self.delta = delta
 
-        print('__init__ ok!')
+        self.alfa = alfa
+
+        random.seed(2)
+
+        #print('__init__ ok!')
 
 
     def ask(self, n, tell_pending=True):
         """Return 'n' points that are expected to maximally reduce the loss."""
-        assert isinstance(self._mean_error, dict)
+        assert isinstance(self._error_in_mean, dict)
         assert isinstance(self._number_samples, dict)
 
         # If self.data contains no points, proceed as in Learner1D
-        if not self._mean_error.__len__():
+        if not self.data.__len__():
             points, loss_improvements = self._ask_points_without_adding(n)
         # If some point is under-sampled, invest the next samples on it
         elif len(self._undersampled_points):
             x = self._undersampled_points.pop()
-            print('NEW ASK')
+            self._undersampled_points.add(x)
             points, loss_improvements = self._ask_for_more_samples(x,n)
-        # If some point has large mean error, invest the next samples on it
-        elif self._mean_error.peekitem(-1)[1] > self.delta:
-            _, x = self._mean_error.popitem(-1)
-            print('NEW ASK')
-            points, loss_improvements = self._ask_for_more_samples(x,n)
+        # If only 1 point was sampled, sample a new one
+        elif self.data.__len__() == 1:
+            points, loss_improvements = self._ask_points_without_adding(n)
+        # If there are at least 2 points and the loss difference is too large,
+        # sample n/(2*(nth_neighbors+1) times each point of the interval # REVIEW
+        elif self._losses_diff.peekitem(0)[1] > self.delta:
+            x1, x2 = self._losses_diff.peekitem(0)[0]
+            # We invest half of the samples on each point. In case n is odd,
+            # in order to not introduce any asymmetric bias, we choose at random
+            # which x will be sampled more times
+            if random.randint(0,1):
+                    points1, loss_improvements1 = self._ask_for_more_samples(x1,n//2)
+                    points2, loss_improvements2 = self._ask_for_more_samples(x2,n-n//2)
+            else:
+                    points1, loss_improvements1 = self._ask_for_more_samples(x1,n-n//2)
+                    points2, loss_improvements2 = self._ask_for_more_samples(x2,n//2)
+            points = points1+points2
+            loss_improvements = loss_improvements1+loss_improvements2
         # Otherwise, sample new points
         else:
             points, loss_improvements = self._ask_points_without_adding(n)
 
         if tell_pending:
-            print('tell_pending must be redesigned carefully')
+            #print('tell_pending must be redesigned carefully')
             for p in points:
                 self.tell_pending(p)
 
@@ -73,7 +96,7 @@ class AverageLearner1D(Learner1D):
     def _ask_for_more_samples(self,x,n):
         points = [x] * n
         loss_improvements = [0] * n
-        print('loss_improvements not implemented yet')
+        #print('loss_improvements not implemented yet')
         return points, loss_improvements
 
     def tell_pending(self, x):
@@ -107,12 +130,14 @@ class AverageLearner1D(Learner1D):
             self._data_samples[x] = [y]
             self._number_samples[x] = 1
             self._undersampled_points.add(x)
-            self._mean_error[x] = np.inf
+            self._error_in_mean[x] = np.inf # REVIEW: should be np.inf?
+            self._update_losses_diff(x)
         # If re-sampled data point:
         else:
             self._update_data(x,y)
             self.pending_points.discard(x)
-            self._update_data_structures(x, y)
+            self._update_data_structures_resampling(x, y)
+            self._update_losses_diff(x)
 
 
     def _update_data(self,x,y):
@@ -121,7 +146,7 @@ class AverageLearner1D(Learner1D):
         new_average = self._data[x]*n/(n+1) + y/(n+1)
         self._data[x] = new_average
 
-    def _update_data_structures(self, x, y):
+    def _update_data_structures_resampling(self, x, y):
         '''This function is only used if self._data already contains x'''
         # No need to check that x is inside the bounds
         # No need to update neighbors
@@ -134,14 +159,20 @@ class AverageLearner1D(Learner1D):
 
         n = self._number_samples[x]
         if (x in self._undersampled_points) and (n >= self.min_samples):
+            #print(n)
             self._undersampled_points.discard(x)
 
-        # We compute the mean error as the std of the mean
-        self._mean_error[x] = (sum(self._data_samples[x])-n*self._data[x])/(n**0.5*(n-1))
+        # We compute the error in the estimation of the mean as
+        # the std of the mean multiplied by a t-Student factor to ensure that
+        # the mean value lies within the correct interval of confidence
+        y_avg = self._data[x]
+        variance_in_mean = sum( [(yj-y_avg)**2 for yj in self._data_samples[x]] )/(n-1)
+        t_student = tstud.ppf(1.0 - self.alfa, df=n-1)
+        self._error_in_mean[x] = t_student*(variance_in_mean/n)**0.5
 
         # We also need to update scale and losses
         super()._update_scale(x, y)
-        self._update_losses_after_resampling(x, real=True)
+        self._update_losses_resampling(x, real=True) # REVIEW
 
         '''Is the following necessary?'''
         # If the scale has increased enough, recompute all losses.
@@ -151,7 +182,7 @@ class AverageLearner1D(Learner1D):
 
             self._oldscale = deepcopy(self._scale)
 
-    def _update_losses_after_resampling(self, x, real=True):
+    def _update_losses_resampling(self, x, real=True):
         """Update all losses that depend on x, whenever the new point is a
            re-sampled point"""
         # (x_left, x_right) are the "real" neighbors of 'x'.
@@ -163,11 +194,6 @@ class AverageLearner1D(Learner1D):
         if real:
             for ival in _get_intervals(x, self.neighbors, self.nth_neighbors):
                 self._update_interpolated_loss_in_interval(*ival)
-
-            # Since 'x' is in between (x_left, x_right),
-            # we get rid of the interval.
-            self.losses.pop((x_left, x_right), None)
-            self.losses_combined.pop((x_left, x_right), None)
         elif x_left is not None and x_right is not None:
             # 'x' happens to be in between two real points,
             # so we can interpolate the losses.
@@ -186,9 +212,71 @@ class AverageLearner1D(Learner1D):
         if (b is not None) and right_loss_is_unknown:
             self.losses_combined[x, b] = float("inf")
 
+    def _update_losses_diff(self, x, real=True):
+        """Update all _losses_diff that depend on x.
+           The current implementation only updates real points."""
+        # When we add a new point x, we should update the losses
+        # (x_left, x_right) are the "real" neighbors of 'x'.
+        x_left, x_right = self._find_neighbors(x, self.neighbors)
+
+        if real:
+            # We need to update all interpolated losses in the interval
+            # (x_left, x), (x, x_right) and the nth_neighbors nearest
+            # neighboring intervals. Since the addition of the
+            # point 'x' could change their loss.
+            for ival in _get_intervals(x, self.neighbors, self.nth_neighbors):
+                self._update_loss_diff_in_interval(*ival)
+
+            # Since 'x' is in between (x_left, x_right),
+            # we get rid of the interval.
+            self._losses_diff.pop((x_left, x_right), None)
+        else:
+            print('_update_losses_diff with real=False not implemented...')
+
+    def _update_loss_diff_in_interval(self, x_left, x_right):
+        if x_left is None or x_right is None:
+            return
+        loss_diff = self._get_loss_diff_in_interval(x_left, x_right)
+        self._losses_diff[x_left, x_right] = loss_diff
+
+    def _get_loss_diff_in_interval(self, x_left, x_right):
+        assert x_left is not None and x_right is not None
+
+        if x_right - x_left < self._dx_eps:
+            return 0
+
+        nn = self.nth_neighbors
+        i = self.neighbors.index(x_left)
+        start = i - nn
+        end = i + nn + 2
+
+        xs = [self._get_point_by_index(i) for i in range(start, end)]
+        # Note that we apply a random sign!!
+        ys = [self.data.get(x, None)+random_sign()*self._error_in_mean.get(x, None) for x in xs]
+
+        xs_scaled = tuple(self._scale_x(x) for x in xs)
+        ys_scaled = tuple(self._scale_y(y) for y in ys)
+
+        loss_IC = self.loss_per_interval(xs_scaled, ys_scaled) # This loss is calculated with
+                                                               # extremes values of ys inside
+                                                               # its confidence interval
+
+        loss = self.losses[(xs[0],xs[1])] # Recall: the keys of this dict are tuples, not lists
+
+        return abs(loss-loss_IC)/loss
+
 
     def tell_many(self,x,y):
-        print('Not implemented yet.')
+        #print('Not implemented yet.')
+        return
+
+    def total_samples(self):
+        '''Returns the total number of samples'''
+        _, ns = zip(*self._number_samples.items())
+        return sum(ns)
+
+def random_sign():
+    return 1 if random.random() < 0.5 else -1
 
     # def _ask_points_without_adding(self, n):
     #     points, loss_improvements = super()._ask_points_without_adding(n)
