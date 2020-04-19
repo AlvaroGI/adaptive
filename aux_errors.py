@@ -13,7 +13,7 @@ from scipy.integrate import quad
 
 from random import random
 
-def error_averagelearner1D_vs_uniform(fun,bounds,strategy,delta,min_samples,alfa,N,interp='linear'):
+def error_averagelearner1D_vs_uniform(fun,bounds,strategy,delta,min_samples,alfa,M,N,interp='linear'):
     '''Returns:
         -the L1-error between AverageLearner1D and the function without noise
         -the number of samples of the AverageLearner1D
@@ -32,7 +32,7 @@ def error_averagelearner1D_vs_uniform(fun,bounds,strategy,delta,min_samples,alfa
     # Define and run AverageLearner1D
     learner = AverageLearner1D(fun, bounds=bounds,
                                strategy=strategy, delta=delta,
-                               min_samples=min_samples, alfa=alfa)
+                               min_samples=min_samples, alfa=alfa, M=M)
     for _ in np.arange(N):
             xs, _ = learner.ask(1)
             for x in xs:
@@ -46,7 +46,7 @@ def error_averagelearner1D_vs_uniform(fun,bounds,strategy,delta,min_samples,alfa
     x_uniform = np.linspace(bounds[0],bounds[1],np.ceil(N_adaptive/unif_samples_per_point))
     learner_uniform = AverageLearner1D(fun, bounds=bounds,
                                        strategy=strategy, delta=delta,
-                                       min_samples=min_samples, alfa=alfa)
+                                       min_samples=min_samples, alfa=alfa, M=M)
     for _ in np.arange(unif_samples_per_point):
         for xx in x_uniform:
             yy = learner_uniform.function(xx)

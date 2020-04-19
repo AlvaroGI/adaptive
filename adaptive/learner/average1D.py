@@ -34,8 +34,10 @@ class AverageLearner1D(Learner1D):
     alfa : float
         The size of the interval of confidence of the estimate of the mean
         is 1-2*alfa
+    M : int (>3)
+        Number of points taken for the 'moving average'. Only used in strategy 3.
     """
-    def __init__(self, function, bounds, loss_per_interval=None, min_samples=3, strategy=None, delta=0.1, alfa=0.025):
+    def __init__(self, function, bounds, loss_per_interval=None, min_samples=3, strategy=None, delta=0.1, alfa=0.025, M=2):
         super().__init__(function, bounds, loss_per_interval)
 
         self._data_samples = sortedcontainers.SortedDict() # This SortedDict contains all samples f(x) for each x
@@ -57,11 +59,20 @@ class AverageLearner1D(Learner1D):
         self.alfa = alfa
 
         if not strategy:
-                raise ValueError('Strategy not specified.')
+            raise ValueError('Strategy not specified.')
         elif strategy>3:
-                raise ValueError('Incorrect strategy (should be 1, 2 or 3)')
+            raise ValueError('Incorrect strategy (should be 1, 2 or 3)')
         else:
-                self.strategy = strategy
+            self.strategy = strategy
+
+        if self.strategy == 3:
+            self._data = data_initializer_ordered()
+
+        if not M:
+            import warnings
+            warnings.warn("M is zero")
+
+        self.M = M
 
         random.seed(2)
 
@@ -74,7 +85,7 @@ class AverageLearner1D(Learner1D):
         assert isinstance(self._number_samples, dict)
 
         if self.strategy==3:
-            raise ValueError('Strategy 3 not implemented.')
+            points, loss_improvements = self._ask_points_without_adding(n)
         # If self.data contains no points, proceed as in Learner1D
         if not self.data.__len__():
             points, loss_improvements = self._ask_points_without_adding(n)
@@ -146,12 +157,18 @@ class AverageLearner1D(Learner1D):
 
         '''The next if/else can be alternatively included in a different
            definition of _update_data'''
+        if self.strategy == 3:
+            self._data_samples[x] = y
+            self._update_data_moving_avg(x,y)
+            self.pending_points.discard(x)
+            super()._update_data_structures(x, y)
+            self._number_samples[x] = 1
         # If new data point, operate as in Learner1D
-        if not self._data.__contains__(x):
+        elif not self._data.__contains__(x):
+            self._data_samples[x] = [y]
             self._data[x] = y
             self.pending_points.discard(x)
             super()._update_data_structures(x, y)
-            self._data_samples[x] = [y]
             self._number_samples[x] = 1
             self._undersampled_points.add(x)
             self._error_in_mean[x] = np.inf # REVIEW: should be np.inf?
@@ -163,6 +180,22 @@ class AverageLearner1D(Learner1D):
             self._update_data_structures_resampling(x, y)
             self._update_losses_diff(x)
 
+    def _update_data_moving_avg(self,x,y):
+        '''This function is only used in strategy 3'''
+        x_index = self._data_samples.index(x)
+        N = self.total_samples()
+
+        if N == 1:
+            self._data[x] = y
+            return
+
+        for ii in np.arange(max(0,x_index-self.M),min(N,x_index+self.M+1)):
+            new_average = 0
+            counter = 0
+            for jj in np.arange(max(0,ii-self.M),min(N,ii+self.M+1)):
+                new_average += self._data_samples.peekitem(jj)[1]
+                counter += 1
+            self._data[self._data_samples.peekitem(ii)[0]] = new_average/counter
 
     def _update_data(self,x,y):
         '''This function is only used if self._data contains x'''
@@ -296,8 +329,11 @@ class AverageLearner1D(Learner1D):
 
     def total_samples(self):
         '''Returns the total number of samples'''
-        _, ns = zip(*self._number_samples.items())
-        return sum(ns)
+        if self.strategy == 3:
+            return len(self._data_samples)
+        else:
+            _, ns = zip(*self._number_samples.items())
+            return sum(ns)
 
 def random_sign():
     return 1 if random.random() < 0.5 else -1
@@ -305,6 +341,13 @@ def random_sign():
 def error_in_mean_initializer():
     def sorting_rule(key, value):
         return -value
+    return sortedcollections.ItemSortedDict(sorting_rule, sortedcontainers.SortedDict())
+
+def data_initializer_ordered():
+    '''This initialization is used with self._data in strategy 3. It orders the
+       data from small to large x'''
+    def sorting_rule(key, value):
+        return key
     return sortedcollections.ItemSortedDict(sorting_rule, sortedcontainers.SortedDict())
 
     # def _ask_points_without_adding(self, n):
