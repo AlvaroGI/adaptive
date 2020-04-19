@@ -22,10 +22,20 @@ class AverageLearner1D(Learner1D):
 
     New parameters (wrt Learner1D)
     ------------------------------
+    min_samples : int
+        The minimum number of samples at each point x.
+    strategy : int (1-3)
+        Strategy chosen to sample new points or re-sample.
+        1 = Check the error in the loss.
+        2 = Check the error in the mean values.
+        3 = Take 'moving average' (this strategy never re-samples).
     delta : float
         The minimum value of the mean error.
+    alfa : float
+        The size of the interval of confidence of the estimate of the mean
+        is 1-2*alfa
     """
-    def __init__(self, function, bounds, loss_per_interval=None, min_samples=3, delta=0.1, alfa=0.025):
+    def __init__(self, function, bounds, loss_per_interval=None, min_samples=3, strategy=None, delta=0.1, alfa=0.025):
         super().__init__(function, bounds, loss_per_interval)
 
         self._data_samples = sortedcontainers.SortedDict() # This SortedDict contains all samples f(x) for each x
@@ -40,11 +50,18 @@ class AverageLearner1D(Learner1D):
         # using extreme values of the intervals of confidence
         self._losses_diff = loss_manager(self._scale[0]) # {x: loss_diff(x)}
 
-        self._error_in_mean = sortedcontainers.SortedDict() # This SortedDict contains the estimation errors for
-                                                            # each fbar(x) in the form {x0: estimation_error(x0)}
+        self._error_in_mean = error_in_mean_initializer() # This SortedDict contains the estimation errors for
+                                                          # each fbar(x) in the form {x0: estimation_error(x0)}
         self.delta = delta
 
         self.alfa = alfa
+
+        if not strategy:
+                raise ValueError('Strategy not specified.')
+        elif strategy>3:
+                raise ValueError('Incorrect strategy (should be 1, 2 or 3)')
+        else:
+                self.strategy = strategy
 
         random.seed(2)
 
@@ -56,6 +73,8 @@ class AverageLearner1D(Learner1D):
         assert isinstance(self._error_in_mean, dict)
         assert isinstance(self._number_samples, dict)
 
+        if self.strategy==3:
+            raise ValueError('Strategy 3 not implemented.')
         # If self.data contains no points, proceed as in Learner1D
         if not self.data.__len__():
             points, loss_improvements = self._ask_points_without_adding(n)
@@ -69,7 +88,7 @@ class AverageLearner1D(Learner1D):
             points, loss_improvements = self._ask_points_without_adding(n)
         # If there are at least 2 points and the loss difference is too large,
         # sample n/(2*(nth_neighbors+1) times each point of the interval # REVIEW
-        elif self._losses_diff.peekitem(0)[1] > self.delta:
+        elif self.strategy==1 and self._losses_diff.peekitem(0)[1] > self.delta*max(1,self._scale[1]):
             x1, x2 = self._losses_diff.peekitem(0)[0]
             # We invest half of the samples on each point. In case n is odd,
             # in order to not introduce any asymmetric bias, we choose at random
@@ -82,6 +101,11 @@ class AverageLearner1D(Learner1D):
                     points2, loss_improvements2 = self._ask_for_more_samples(x2,n//2)
             points = points1+points2
             loss_improvements = loss_improvements1+loss_improvements2
+        # If the error on the estimate of the mean is too large at x,
+        # ask for more samples at x
+        elif self.strategy==2 and self._error_in_mean.peekitem(0)[1] > self.delta:
+                x = self._error_in_mean.peekitem(0)[0]
+                points, loss_improvements = self._ask_for_more_samples(x,n)
         # Otherwise, sample new points
         else:
             points, loss_improvements = self._ask_points_without_adding(n)
@@ -277,6 +301,11 @@ class AverageLearner1D(Learner1D):
 
 def random_sign():
     return 1 if random.random() < 0.5 else -1
+
+def error_in_mean_initializer():
+    def sorting_rule(key, value):
+        return -value
+    return sortedcollections.ItemSortedDict(sorting_rule, sortedcontainers.SortedDict())
 
     # def _ask_points_without_adding(self, n):
     #     points, loss_improvements = super()._ask_points_without_adding(n)
