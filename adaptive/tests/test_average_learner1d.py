@@ -22,6 +22,192 @@ import warnings
 #____________________________________________________________________
 #_____________________________TESTS__________________________________
 #____________________________________________________________________
+def test_single_NSR(learner, max_samples, final_plot=True, keep_init=False, title=None):
+    '''Runs the learner until it contains max_samples samples.
+       Then, calculates the NSR versus x.
+       ---Input---
+            learner: learner to test (learner)
+            max_samples: maximum number of samples (int)
+            final_plot: if True, plot NSR after running (bool)
+            keep_init: if True, keep the initial state of the learner (bool)
+            title: title of the plot (optional, string)'''
+
+    if keep_init:
+        learner1 = copy.deepcopy(learner)
+
+    while learner.total_samples()<max_samples:
+            xs, _ = learner.ask(1)
+            for xx in xs:
+                yy = learner.function(xx)
+                learner.tell(xx,yy)
+
+    NSR = calculate_NSR(learner)
+
+    if final_plot:
+        plt.plot(list(NSR.keys()),list(NSR.values()))
+        plt.xlim(learner.bounds)
+        plt.ylim([0,1])
+        plt.xlabel('x')
+        plt.ylabel('NSR(x)')
+        if title:
+            plt.title(title)
+
+    if keep_init:
+        learner = copy.deepcopy(learner1)
+
+    return NSR
+
+def test_single_ISR(learner, max_samples, final_plot=True, keep_init=False, title=None):
+    '''Runs the learner until it contains max_samples samples.
+       Then, calculates the ISR versus x.
+       ---Input---
+            learner: learner to test (learner)
+            max_samples: maximum number of samples (int)
+            final_plot: if True, plot NSR after running (bool)
+            keep_init: if True, keep the initial state of the learner (bool)
+            title: title of the plot (optional, string)'''
+
+    if keep_init:
+        learner1 = copy.deepcopy(learner)
+
+    while learner.total_samples()<max_samples:
+            xs, _ = learner.ask(1)
+            for xx in xs:
+                yy = learner.function(xx)
+                learner.tell(xx,yy)
+
+    ISR = calculate_NSR(learner)
+
+    if final_plot:
+        plt.plot(list(ISR.keys()),list(ISR.values()))
+        plt.xlim(learner.bounds)
+        plt.ylim([0,1])
+        plt.xlabel('x')
+        plt.ylabel('ISR(x)')
+        if title:
+            plt.title(title)
+
+    if keep_init:
+        learner = copy.deepcopy(learner1)
+
+    return ISR
+
+def test_NSR_ISR(max_samples, sigmas = 0, return_learners=False, save_plots=False, **learner_kwargs):
+    '''Generates 3x5 plots with the estimated function, the ISR and the NSR'''
+
+    learners = []
+
+    learners.append(adaptive.AverageLearner1D(partial(const, a=0, sigma=sigmas),
+                                              bounds=(-1,1), **learner_kwargs))
+    learners.append(adaptive.AverageLearner1D(partial(const, a=0, sigma=sigmas,
+                                                      sigma_end=sigmas*5, bounds=(-1,1)),
+                                              bounds=(-1,1), **learner_kwargs))
+    learners.append(adaptive.AverageLearner1D(partial(peak, peak_width=0.01,
+                                                      offset=0, sigma=sigmas),
+                                              bounds=(-1,1), **learner_kwargs))
+    learners.append(adaptive.AverageLearner1D(partial(tanh, stretching=20,
+                                                      offset=0, sigma=sigmas),
+                                              bounds=(-1,1), **learner_kwargs))
+    learners.append(adaptive.AverageLearner1D(partial(lorentz, width=0.5,
+                                                      offset=0, sigma=sigmas*3),
+                                              bounds=(-1,1), **learner_kwargs))
+
+    # To avoid compilation errors, the variables that would be created inside
+    # an exec() are created now instead
+    xs = [0]
+    yy = 0
+    NSR = [{},{},{},{},{}]
+    ISR = [{},{},{},{},{}]
+
+    for i in np.arange(5):
+        while learners[i].total_samples()<max_samples:
+                xs, _ = learners[i].ask(1)
+                for xx in xs:
+                    yy = learners[i].function(xx)
+                    learners[i].tell(xx,yy)
+        NSR[i] = calculate_NSR(learners[i])
+        ISR[i] = calculate_ISR(learners[i])
+
+    # Figure
+    fig, axes = plt.subplots(3,5,figsize=(25/2.54,10/2.54))
+    for i in np.arange(5):
+        #for x in learners[i].data.keys():
+        #    for y in learners[i]._data_samples[x]:
+        #        axes[0][i].scatter(x, y, s=2)
+        x, y = zip(*sorted(learners[i].data.items()))
+        axes[0][i].plot(x,y)
+        axes[1][i].plot(list(NSR[i].keys()),list(NSR[i].values()))
+        axes[2][i].plot(list(ISR[i].keys()),list(ISR[i].values()))
+
+    # Plot noisy functions
+    x = np.linspace(-1,1,100)
+    y = []
+    for xi in x:
+        y.append(const(xi, a=0, sigma=sigmas))
+    axes[0][0].plot(x,y,alpha=0.3)
+
+    x = np.linspace(-1,1,100)
+    y = []
+    for xi in x:
+        y.append(const(xi, a=0, sigma=sigmas, sigma_end=sigmas*5, bounds=(-1,1)))
+    axes[0][1].plot(x,y,alpha=0.3)
+
+    x = np.linspace(-1,1,100)
+    y = []
+    for xi in x:
+        y.append(peak(xi, peak_width=0.01, offset=0, sigma=sigmas))
+    axes[0][2].plot(x,y,alpha=0.3)
+
+    x = np.linspace(-1,1,100)
+    y = []
+    for xi in x:
+        y.append(tanh(xi, stretching=20, offset=0, sigma=sigmas))
+    axes[0][3].plot(x,y,alpha=0.3)
+
+    x = np.linspace(-1,1,100)
+    y = []
+    for xi in x:
+        y.append(lorentz(xi, width=0.5, offset=0, sigma=sigmas*3))
+    axes[0][4].plot(x,y,alpha=0.3)
+
+    # Specs
+    for i in np.arange(5):
+        for j in np.arange(3):
+            axes[j][i].set_xlim([-1,1])
+            axes[j][i].set_xlim([-1,1])
+            axes[j][i].set_xlim([-1,1])
+        axes[1][i].set_ylim([-0.1,1.1])
+        axes[2][i].set_ylim([-0.1,1.1])
+        axes[2][i].set_xlabel("x")
+    axes[0][0].set_ylim([-0.5,0.5])
+    axes[0][1].set_ylim([-1,1])
+    axes[0][2].set_ylim([-1.2,1.2])
+    axes[0][3].set_ylim([-1.2,1.2])
+    axes[0][4].set_ylim([-0.2,2.2])
+
+    axes[0][0].set_ylabel('g(x)')
+    axes[1][0].set_ylabel('NSR(x)')
+    axes[2][0].set_ylabel('ISR(x)')
+
+    axes[0][0].set_title('Constant\n+ uniform noise', fontsize=8)
+    axes[0][1].set_title('Constant\n+ linear noise', fontsize=8)
+    axes[0][2].set_title('Peak\n+ uniform noise', fontsize=8)
+    axes[0][3].set_title('Tanh\n+ uniform noise', fontsize=8)
+    axes[0][4].set_title('Lorentz\n+ multipl. noise', fontsize=8)
+
+    for j in np.arange(1,5):
+#        axes[0][j].set_yticklabels([])
+        axes[1][j].set_yticklabels([])
+        axes[2][j].set_yticklabels([])
+    for i in np.arange(5):
+        axes[0][i].set_xticklabels([])
+        axes[1][i].set_xticklabels([])
+    plt.subplots_adjust(wspace=0.3)
+
+    return
+
+
+
 def test_NSR(max_samples, return_learners=False, fps=10, samples_per_frame=100, show_anim=True, save_anim=False, **learner_kwargs):
     '''Calculates the NSR versus x for all the test functions.
        ---Input---
@@ -134,7 +320,7 @@ def test_NSR(max_samples, return_learners=False, fps=10, samples_per_frame=100, 
 
     plt.close(ani._fig)
     print('Done!')
-    
+
     if not return_learners:
         return ani
     else:
@@ -149,12 +335,27 @@ def calculate_NSR(learner):
        ---Output---
             NSR: dictionary where the keys are the points x and the values
                  are the NSR at those points.'''
-    NSR = learner._number_samples
+    NSR = copy.deepcopy(learner._number_samples)
     maxNS = max(NSR.values())
     NSR.update((x, y/maxNS) for x, y in NSR.items())
     return NSR
 
-
+def calculate_ISR(learner):
+    '''Calculates the interval size ratio (ISR) of a learner. This is
+       calculated as interval_size(x_i)/max(interval_size(x)). We identify each
+       interval with its mid-point.
+       ---Output---
+            ISR: dictionary where the keys are the mid-points of the intervals
+                 and the values are the ISR of the intervals.'''
+    points = copy.deepcopy(learner.data)
+    x, _ = zip(*sorted(points.items()))
+    ISR = {}
+    for i in np.arange(len(x)-1):
+        x_mid = x[i] + (x[i+1]-x[i])/2
+        ISR[x_mid] = x[i+1]-x[i]
+    maxIS = max(ISR.values())
+    ISR.update((x, y/maxIS) for x, y in ISR.items())
+    return ISR
 
 #____________________________________________________________________
 #____________________________FUNCTIONS_______________________________

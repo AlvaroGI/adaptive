@@ -213,7 +213,6 @@ class AverageLearner1D(Learner1D):
         self._data_samples[x].append(y)
 
         self._number_samples[x] = self._number_samples[x]+1
-
         n = self._number_samples[x]
         if (x in self._undersampled_points) and (n >= self.min_samples):
             #print(n)
@@ -331,6 +330,8 @@ class AverageLearner1D(Learner1D):
         '''Returns the total number of samples'''
         if self.strategy == 3:
             return len(self._data_samples)
+        elif not len(self._data):
+            return 0
         else:
             _, ns = zip(*self._number_samples.items())
             return sum(ns)
