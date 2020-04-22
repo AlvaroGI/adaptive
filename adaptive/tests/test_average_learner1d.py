@@ -70,48 +70,56 @@ def test_NSR(max_samples, return_learners=False, fps=10, samples_per_frame=100, 
     fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2,2)
 
     plot1, = ax1.plot(list(NSR1.keys()),list(NSR1.values()))
-    ax1.set_xlim([-1,1])
-    ax1.set_ylim([-0.3,0.3])
-    ax1.set_xlabel('x')
-    ax1.set_ylabel('NSR(x)')
-    ax1.set_title('Constant + uniform noise')
-
     plot2, = ax2.plot(list(NSR2.keys()),list(NSR2.values()))
-    ax2.set_xlim([-1,1])
-    ax2.set_ylim([-1,1])
-    ax2.set_xlabel('x')
-    ax2.set_ylabel('NSR(x)')
-    ax2.set_title('Constant + linear noise')
-
     plot3, = ax3.plot(list(NSR3.keys()),list(NSR3.values()))
-    ax3.set_xlim([-1,1])
-    ax3.set_ylim([-1.2,1.2])
-    ax3.set_xlabel('x')
-    ax3.set_ylabel('NSR(x)')
-    ax3.set_title('Peak + uniform noise')
-
     plot4, = ax4.plot(list(NSR4.keys()),list(NSR4.values()))
-    ax4.set_xlim([-1,1])
-    ax3.set_ylim([-1.2,1.2])
-    ax4.set_xlabel('x')
-    ax4.set_ylabel('NSR(x)')
+
+    for name in ['1','2','3','4']:
+        exec('ax'+name+'.set_xlim([-1,1])')
+        exec('ax'+name+'.set_ylim([0,1])')
+        exec('ax'+name+'.set_xlabel("x")')
+        exec('ax'+name+'.set_ylabel("NSR(x)")')
+    ax1.set_title('Constant + uniform noise')
+    ax2.set_title('Constant + linear noise')
+    ax3.set_title('Peak + uniform noise')
     ax4.set_title('Tanh + uniform noise')
 
     # Animation
     frames = int(np.ceil(max_samples/samples_per_frame))
 
     def update(frame_i):
-        for name in ['1','2','3','4']:
-            for _ in range(0,samples_per_frame):
-                    exec('xs, _ = learner'+name+'.ask(1)')
-                    for xx in xs:
-                        exec('yy = learner'+name+'.function(xx)')
-                        exec('learner'+name+'.tell(xx,yy)')
-            exec('NSR'+name+' = calculate_NSR(learner'+name+')')
-            exec('plot'+name+'.set_xdata(NSR'+name+'.keys())')
-            exec('plot'+name+'.set_ydata(NSR'+name+'.values())')
-        #fig.canvas.draw()
-        #fig.canvas.flush_events()
+        for _ in range(0,samples_per_frame):
+                xs, _ = learner1.ask(1)
+                for xx in xs:
+                    yy = learner1.function(xx)
+                    learner1.tell(xx,yy)
+        NSR1 = calculate_NSR(learner1)
+        plot1.set_xdata(list(NSR1.keys()))
+        plot1.set_ydata(list(NSR1.values()))
+        for _ in range(0,samples_per_frame):
+                xs, _ = learner2.ask(1)
+                for xx in xs:
+                    yy = learner2.function(xx)
+                    learner2.tell(xx,yy)
+        NSR2 = calculate_NSR(learner2)
+        plot2.set_xdata(list(NSR2.keys()))
+        plot2.set_ydata(list(NSR2.values()))
+        for _ in range(0,samples_per_frame):
+                xs, _ = learner3.ask(1)
+                for xx in xs:
+                    yy = learner3.function(xx)
+                    learner3.tell(xx,yy)
+        NSR3 = calculate_NSR(learner3)
+        plot3.set_xdata(list(NSR3.keys()))
+        plot3.set_ydata(list(NSR3.values()))
+        for _ in range(0,samples_per_frame):
+                xs, _ = learner4.ask(1)
+                for xx in xs:
+                    yy = learner4.function(xx)
+                    learner4.tell(xx,yy)
+        NSR4 = calculate_NSR(learner4)
+        plot4.set_xdata(list(NSR4.keys()))
+        plot4.set_ydata(list(NSR4.values()))
         return plot1,plot2,plot3,plot4
 
     ani = animation.FuncAnimation(fig, update, frames=frames, interval=1000/fps)
@@ -126,9 +134,11 @@ def test_NSR(max_samples, return_learners=False, fps=10, samples_per_frame=100, 
 
     plt.close(ani._fig)
     print('Done!')
-
-    return ani
-
+    
+    if not return_learners:
+        return ani
+    else:
+        return ani, learner1, learner2, learner3, learner4
 
 #____________________________________________________________________
 #______________________________MISC__________________________________
