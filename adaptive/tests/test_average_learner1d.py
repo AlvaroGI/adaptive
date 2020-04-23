@@ -92,8 +92,28 @@ def test_single_ISR(learner, max_samples, final_plot=True, keep_init=False, titl
 
     return ISR
 
-def test_NSR_ISR(max_samples, sigmas = 0, return_learners=False, save_plots=False, **learner_kwargs):
-    '''Generates 3x5 plots with the estimated function, the ISR and the NSR'''
+def test_NSR_ISR(max_samples, sigmas = 0, return_learners=False, save_plots=False, fig_name=None, extra_learner_specs=None, **learner_kwargs):
+    '''Generates 3x5 plots with the estimated function, the ISR and the NSR.
+       ---Input---
+            max_samples: maximum number of samples (int)
+            sigmas: base value for the std of the noise; see each function at the
+                    end of this file for further details (float)
+            return_learners: set to True to return all the learners;
+                             set to False to return nothing (bool)
+                               the animation (int)
+            save_plots: set to True to save animation as .gif (bool)
+            fig_name: name of the figure, only used if save_plots==True (str)
+            extra_learner_specs: parameters of a second batch of learners to be
+                                 plotted in the same figure; it generates a
+                                 second loading bar (dict). Example:
+                                 {'strategy':1, 'delta':2, 'min_samples':5}'''
+    from tqdm import tqdm
+
+    if save_plots and (not fig_name):
+        raise ValueError('fig_name not specified.')
+        assert isinstance(fig_name,str), 'fig_name must be str.'
+    if not learner_kwargs:
+        raise TypeError('Parameters of the learners not specified.')
 
     learners = []
 
@@ -111,64 +131,94 @@ def test_NSR_ISR(max_samples, sigmas = 0, return_learners=False, save_plots=Fals
     learners.append(adaptive.AverageLearner1D(partial(lorentz, width=0.5,
                                                       offset=0, sigma=sigmas*3),
                                               bounds=(-1,1), **learner_kwargs))
+    if extra_learner_specs:
+        learners.append(adaptive.AverageLearner1D(partial(const, a=0, sigma=sigmas),
+                                                  bounds=(-1,1), **extra_learner_specs))
+        learners.append(adaptive.AverageLearner1D(partial(const, a=0, sigma=sigmas,
+                                                          sigma_end=sigmas*5, bounds=(-1,1)),
+                                                  bounds=(-1,1), **extra_learner_specs))
+        learners.append(adaptive.AverageLearner1D(partial(peak, peak_width=0.01,
+                                                          offset=0, sigma=sigmas),
+                                                  bounds=(-1,1), **extra_learner_specs))
+        learners.append(adaptive.AverageLearner1D(partial(tanh, stretching=20,
+                                                          offset=0, sigma=sigmas),
+                                                  bounds=(-1,1), **extra_learner_specs))
+        learners.append(adaptive.AverageLearner1D(partial(lorentz, width=0.5,
+                                                          offset=0, sigma=sigmas*3),
+                                                  bounds=(-1,1), **extra_learner_specs))
 
-    # To avoid compilation errors, the variables that would be created inside
-    # an exec() are created now instead
-    xs = [0]
-    yy = 0
-    NSR = [{},{},{},{},{}]
-    ISR = [{},{},{},{},{}]
+    NSR = []
+    ISR = []
 
-    for i in np.arange(5):
+    for i in tqdm(np.arange(5)):
         while learners[i].total_samples()<max_samples:
                 xs, _ = learners[i].ask(1)
                 for xx in xs:
                     yy = learners[i].function(xx)
                     learners[i].tell(xx,yy)
-        NSR[i] = calculate_NSR(learners[i])
-        ISR[i] = calculate_ISR(learners[i])
+        NSR.append(calculate_NSR(learners[i]))
+        ISR.append(calculate_ISR(learners[i]))
+
+    if extra_learner_specs:
+        for i in tqdm(np.arange(5,10)):
+            while learners[i].total_samples()<max_samples:
+                    xs, _ = learners[i].ask(1)
+                    for xx in xs:
+                        yy = learners[i].function(xx)
+                        learners[i].tell(xx,yy)
+            NSR.append(calculate_NSR(learners[i]))
+            ISR.append(calculate_ISR(learners[i]))
 
     # Figure
     fig, axes = plt.subplots(3,5,figsize=(25/2.54,10/2.54))
+
+    # Plot noisy functions
+    if not extra_learner_specs:
+        x = np.linspace(-1,1,100)
+        y = []
+        for xi in x:
+            y.append(const(xi, a=0, sigma=sigmas))
+        axes[0][0].plot(x,y,alpha=0.3,color='tab:orange')
+
+        x = np.linspace(-1,1,100)
+        y = []
+        for xi in x:
+            y.append(const(xi, a=0, sigma=sigmas, sigma_end=sigmas*5, bounds=(-1,1)))
+        axes[0][1].plot(x,y,alpha=0.3,color='tab:orange')
+
+        x = np.linspace(-1,1,100)
+        y = []
+        for xi in x:
+            y.append(peak(xi, peak_width=0.01, offset=0, sigma=sigmas))
+        axes[0][2].plot(x,y,alpha=0.3,color='tab:orange')
+
+        x = np.linspace(-1,1,100)
+        y = []
+        for xi in x:
+            y.append(tanh(xi, stretching=20, offset=0, sigma=sigmas))
+        axes[0][3].plot(x,y,alpha=0.3,color='tab:orange')
+
+        x = np.linspace(-1,1,100)
+        y = []
+        for xi in x:
+            y.append(lorentz(xi, width=0.5, offset=0, sigma=sigmas*3))
+        axes[0][4].plot(x,y,alpha=0.3,color='tab:orange')
+
+    # Plot learners' data
     for i in np.arange(5):
         #for x in learners[i].data.keys():
         #    for y in learners[i]._data_samples[x]:
         #        axes[0][i].scatter(x, y, s=2)
         x, y = zip(*sorted(learners[i].data.items()))
-        axes[0][i].plot(x,y)
-        axes[1][i].plot(list(NSR[i].keys()),list(NSR[i].values()))
-        axes[2][i].plot(list(ISR[i].keys()),list(ISR[i].values()))
-
-    # Plot noisy functions
-    x = np.linspace(-1,1,100)
-    y = []
-    for xi in x:
-        y.append(const(xi, a=0, sigma=sigmas))
-    axes[0][0].plot(x,y,alpha=0.3)
-
-    x = np.linspace(-1,1,100)
-    y = []
-    for xi in x:
-        y.append(const(xi, a=0, sigma=sigmas, sigma_end=sigmas*5, bounds=(-1,1)))
-    axes[0][1].plot(x,y,alpha=0.3)
-
-    x = np.linspace(-1,1,100)
-    y = []
-    for xi in x:
-        y.append(peak(xi, peak_width=0.01, offset=0, sigma=sigmas))
-    axes[0][2].plot(x,y,alpha=0.3)
-
-    x = np.linspace(-1,1,100)
-    y = []
-    for xi in x:
-        y.append(tanh(xi, stretching=20, offset=0, sigma=sigmas))
-    axes[0][3].plot(x,y,alpha=0.3)
-
-    x = np.linspace(-1,1,100)
-    y = []
-    for xi in x:
-        y.append(lorentz(xi, width=0.5, offset=0, sigma=sigmas*3))
-    axes[0][4].plot(x,y,alpha=0.3)
+        axes[0][i].plot(x,y,color='tab:blue')
+        axes[1][i].plot(list(NSR[i].keys()),list(NSR[i].values()),color='tab:blue')
+        axes[2][i].plot(list(ISR[i].keys()),list(ISR[i].values()),color='tab:blue')
+    if extra_learner_specs:
+        for i in np.arange(5):
+            x, y = zip(*sorted(learners[i+5].data.items()))
+            axes[0][i].plot(x,y,color='tab:orange',alpha=0.5)
+            axes[1][i].plot(list(NSR[i+5].keys()),list(NSR[i+5].values()),color='tab:orange',alpha=0.5)
+            axes[2][i].plot(list(ISR[i+5].keys()),list(ISR[i+5].values()),color='tab:orange',alpha=0.5)
 
     # Specs
     for i in np.arange(5):
@@ -204,11 +254,19 @@ def test_NSR_ISR(max_samples, sigmas = 0, return_learners=False, save_plots=Fals
         axes[1][i].set_xticklabels([])
     plt.subplots_adjust(wspace=0.3)
 
-    return
+    if save_plots:
+        plt.savefig(fig_name+'.pdf',dpi=300,bbox_inches='tight')
+    else:
+        plt.show()
+
+    if return_learners:
+        return learners
+    else:
+        return
 
 
 
-def test_NSR(max_samples, return_learners=False, fps=10, samples_per_frame=100, show_anim=True, save_anim=False, **learner_kwargs):
+def test_NSR_animation(max_samples, return_learners=False, fps=10, samples_per_frame=100, show_anim=True, save_anim=False, **learner_kwargs):
     '''Calculates the NSR versus x for all the test functions.
        ---Input---
             max_samples: maximum number of samples (int)
