@@ -10,6 +10,8 @@ from random import random
 from adaptive.learner import AverageLearner, AverageLearner2D
 import math
 from functools import partial
+from scipy.interpolate import interp1d
+from scipy.integrate import quad
 
 # For animations
 import matplotlib.pyplot as plt
@@ -92,15 +94,18 @@ def test_single_ISR(learner, max_samples, final_plot=True, keep_init=False, titl
 
     return ISR
 
-def test_NSR_ISR(max_samples, sigmas = 0, return_learners=False, save_plots=False, fig_name=None, extra_learner_specs=None, **learner_kwargs):
+def test_NSR_ISR(max_samples, learners=None, errors=None, sigmas = 0, return_learners=False, save_plots=False, fig_name=None, extra_learner_specs=None, **learner_kwargs):
     '''Generates 3x5 plots with the estimated function, the ISR and the NSR.
        ---Input---
             max_samples: maximum number of samples (int)
+            learners: list containing either 5 or 10 learners; optional (list)
+            errors: dictionary containing the number of samples as key and error
+                    between the real function and the interpolated one as value;
+                    optional (dict)
             sigmas: base value for the std of the noise; see each function at the
                     end of this file for further details (float)
             return_learners: set to True to return all the learners;
                              set to False to return nothing (bool)
-                               the animation (int)
             save_plots: set to True to save animation as .gif (bool)
             fig_name: name of the figure, only used if save_plots==True (str)
             extra_learner_specs: parameters of a second batch of learners to be
@@ -112,43 +117,47 @@ def test_NSR_ISR(max_samples, sigmas = 0, return_learners=False, save_plots=Fals
     if save_plots and (not fig_name):
         raise ValueError('fig_name not specified.')
         assert isinstance(fig_name,str), 'fig_name must be str.'
-    if not learner_kwargs:
-        raise TypeError('Parameters of the learners not specified.')
 
-    learners = []
-
-    learners.append(adaptive.AverageLearner1D(partial(const, a=0, sigma=sigmas),
-                                              bounds=(-1,1), **learner_kwargs))
-    learners.append(adaptive.AverageLearner1D(partial(const, a=0, sigma=sigmas,
-                                                      sigma_end=sigmas*5, bounds=(-1,1)),
-                                              bounds=(-1,1), **learner_kwargs))
-    learners.append(adaptive.AverageLearner1D(partial(peak, peak_width=0.01,
-                                                      offset=0, sigma=sigmas),
-                                              bounds=(-1,1), **learner_kwargs))
-    learners.append(adaptive.AverageLearner1D(partial(tanh, stretching=20,
-                                                      offset=0, sigma=sigmas),
-                                              bounds=(-1,1), **learner_kwargs))
-    learners.append(adaptive.AverageLearner1D(partial(lorentz, width=0.5,
-                                                      offset=0, sigma=sigmas*3),
-                                              bounds=(-1,1), **learner_kwargs))
-    if extra_learner_specs:
+    # Initialize learners
+    if not learners:
+        if not learner_kwargs:
+            raise TypeError('Parameters of the learners not specified.')
+        learners = []
         learners.append(adaptive.AverageLearner1D(partial(const, a=0, sigma=sigmas),
-                                                  bounds=(-1,1), **extra_learner_specs))
+                                                  bounds=(-1,1), **learner_kwargs))
         learners.append(adaptive.AverageLearner1D(partial(const, a=0, sigma=sigmas,
                                                           sigma_end=sigmas*5, bounds=(-1,1)),
-                                                  bounds=(-1,1), **extra_learner_specs))
+                                                  bounds=(-1,1), **learner_kwargs))
         learners.append(adaptive.AverageLearner1D(partial(peak, peak_width=0.01,
                                                           offset=0, sigma=sigmas),
-                                                  bounds=(-1,1), **extra_learner_specs))
+                                                  bounds=(-1,1), **learner_kwargs))
         learners.append(adaptive.AverageLearner1D(partial(tanh, stretching=20,
                                                           offset=0, sigma=sigmas),
-                                                  bounds=(-1,1), **extra_learner_specs))
+                                                  bounds=(-1,1), **learner_kwargs))
         learners.append(adaptive.AverageLearner1D(partial(lorentz, width=0.5,
                                                           offset=0, sigma=sigmas*3),
-                                                  bounds=(-1,1), **extra_learner_specs))
+                                                  bounds=(-1,1), **learner_kwargs))
+        if extra_learner_specs:
+            learners.append(adaptive.AverageLearner1D(partial(const, a=0, sigma=sigmas),
+                                                      bounds=(-1,1), **extra_learner_specs))
+            learners.append(adaptive.AverageLearner1D(partial(const, a=0, sigma=sigmas,
+                                                              sigma_end=sigmas*5, bounds=(-1,1)),
+                                                      bounds=(-1,1), **extra_learner_specs))
+            learners.append(adaptive.AverageLearner1D(partial(peak, peak_width=0.01,
+                                                              offset=0, sigma=sigmas),
+                                                      bounds=(-1,1), **extra_learner_specs))
+            learners.append(adaptive.AverageLearner1D(partial(tanh, stretching=20,
+                                                              offset=0, sigma=sigmas),
+                                                      bounds=(-1,1), **extra_learner_specs))
+            learners.append(adaptive.AverageLearner1D(partial(lorentz, width=0.5,
+                                                              offset=0, sigma=sigmas*3),
+                                                      bounds=(-1,1), **extra_learner_specs))
 
+    # Run learners and calculate NSR, ISR, and error
     NSR = []
     ISR = []
+    if not errors:
+        errors = [{},{},{},{},{},{},{},{},{},{}]
 
     for i in tqdm(np.arange(5)):
         while learners[i].total_samples()<max_samples:
@@ -158,8 +167,9 @@ def test_NSR_ISR(max_samples, sigmas = 0, return_learners=False, save_plots=Fals
                     learners[i].tell(xx,yy)
         NSR.append(calculate_NSR(learners[i]))
         ISR.append(calculate_ISR(learners[i]))
+        errors[i][max_samples] = calculate_L1error(learners[i])
 
-    if extra_learner_specs:
+    if len(learners)==10:
         for i in tqdm(np.arange(5,10)):
             while learners[i].total_samples()<max_samples:
                     xs, _ = learners[i].ask(1)
@@ -168,12 +178,13 @@ def test_NSR_ISR(max_samples, sigmas = 0, return_learners=False, save_plots=Fals
                         learners[i].tell(xx,yy)
             NSR.append(calculate_NSR(learners[i]))
             ISR.append(calculate_ISR(learners[i]))
+            errors[i][max_samples] = calculate_L1error(learners[i])
 
     # Figure
-    fig, axes = plt.subplots(3,5,figsize=(25/2.54,10/2.54))
+    fig, axes = plt.subplots(4,5,figsize=(25/2.54,20/2.54))
 
     # Plot noisy functions
-    if not extra_learner_specs:
+    if len(learners)==5:
         x = np.linspace(-1,1,100)
         y = []
         for xi in x:
@@ -213,12 +224,14 @@ def test_NSR_ISR(max_samples, sigmas = 0, return_learners=False, save_plots=Fals
         axes[0][i].plot(x,y,color='tab:blue')
         axes[1][i].plot(list(NSR[i].keys()),list(NSR[i].values()),color='tab:blue')
         axes[2][i].plot(list(ISR[i].keys()),list(ISR[i].values()),color='tab:blue')
-    if extra_learner_specs:
+        axes[3][i].scatter(list(errors[i].keys()),list(errors[i].values()),color='tab:blue')
+    if len(learners)==10:
         for i in np.arange(5):
             x, y = zip(*sorted(learners[i+5].data.items()))
             axes[0][i].plot(x,y,color='tab:orange',alpha=0.5)
             axes[1][i].plot(list(NSR[i+5].keys()),list(NSR[i+5].values()),color='tab:orange',alpha=0.5)
             axes[2][i].plot(list(ISR[i+5].keys()),list(ISR[i+5].values()),color='tab:orange',alpha=0.5)
+            axes[3][i].scatter(list(errors[i+5].keys()),list(errors[i+5].values()),color='tab:orange',alpha=0.5)
 
     # Specs
     for i in np.arange(5):
@@ -228,7 +241,13 @@ def test_NSR_ISR(max_samples, sigmas = 0, return_learners=False, save_plots=Fals
             axes[j][i].set_xlim([-1,1])
         axes[1][i].set_ylim([-0.1,1.1])
         axes[2][i].set_ylim([-0.1,1.1])
+        axes[3][i].set_ylim([0.001,0.1])
+        axes[3][i].set_xlim([900,6000])
+        axes[3][i].set_xticks([1000, 5000])
         axes[2][i].set_xlabel("x")
+        axes[3][i].set_xlabel("N")
+        axes[3][i].set_yscale('log')
+        #axes[3][i].set_xscale('log')
     axes[0][0].set_ylim([-0.5,0.5])
     axes[0][1].set_ylim([-1,1])
     axes[0][2].set_ylim([-1.2,1.2])
@@ -238,6 +257,7 @@ def test_NSR_ISR(max_samples, sigmas = 0, return_learners=False, save_plots=Fals
     axes[0][0].set_ylabel('g(x)')
     axes[1][0].set_ylabel('NSR(x)')
     axes[2][0].set_ylabel('ISR(x)')
+    axes[3][0].set_ylabel('Error')
 
     axes[0][0].set_title('Constant\n+ uniform noise', fontsize=8)
     axes[0][1].set_title('Constant\n+ linear noise', fontsize=8)
@@ -246,13 +266,13 @@ def test_NSR_ISR(max_samples, sigmas = 0, return_learners=False, save_plots=Fals
     axes[0][4].set_title('Lorentz\n+ multipl. noise', fontsize=8)
 
     for j in np.arange(1,5):
-#        axes[0][j].set_yticklabels([])
         axes[1][j].set_yticklabels([])
         axes[2][j].set_yticklabels([])
+        axes[3][j].set_yticklabels([])
     for i in np.arange(5):
         axes[0][i].set_xticklabels([])
         axes[1][i].set_xticklabels([])
-    plt.subplots_adjust(wspace=0.3)
+    plt.subplots_adjust(wspace=0.3,hspace=0.4)
 
     if save_plots:
         plt.savefig(fig_name+'.pdf',dpi=300,bbox_inches='tight')
@@ -260,7 +280,7 @@ def test_NSR_ISR(max_samples, sigmas = 0, return_learners=False, save_plots=Fals
         plt.show()
 
     if return_learners:
-        return learners
+        return learners, errors
     else:
         return
 
@@ -414,6 +434,24 @@ def calculate_ISR(learner):
     maxIS = max(ISR.values())
     ISR.update((x, y/maxIS) for x, y in ISR.items())
     return ISR
+
+def calculate_L1error(learner):
+    '''Calculates the error (L1-norm) between the real function and the
+       interpolated one using the samples from the learner.
+       ---Output---
+            error: float'''
+    x, y = zip(*learner.data.items())
+    f = partial(learner.function, sigma=0)
+
+    # Create interpolators
+    f_interp = interp1d(x, y, kind='linear', fill_value='extrapolate')
+
+    def integrand(x):
+        return abs(f_interp(x)-f(x,sigma=0))
+
+    error, error_error = quad(integrand,learner.bounds[0],learner.bounds[1])
+
+    return error
 
 #____________________________________________________________________
 #____________________________FUNCTIONS_______________________________
