@@ -37,7 +37,7 @@ class AverageLearner1D(Learner1D):
     M : int (>3)
         Number of points taken for the 'moving average'. Only used in strategy 3.
     """
-    def __init__(self, function, bounds, loss_per_interval=None, min_samples=3, strategy=None, delta=0.1, alfa=0.025, M=2):
+    def __init__(self, function, bounds, loss_per_interval=None, min_samples=3, strategy=None, delta=0.1, alfa=0.025, M=2, Delta_r=0.5):
         super().__init__(function, bounds, loss_per_interval)
 
         self._data_samples = sortedcontainers.SortedDict() # This SortedDict contains all samples f(x) for each x
@@ -54,14 +54,20 @@ class AverageLearner1D(Learner1D):
 
         self._error_in_mean = error_in_mean_initializer() # This SortedDict contains the estimation errors for
                                                           # each fbar(x) in the form {x0: estimation_error(x0)}
+        if strategy==4:
+            self._rescaling_factors= {} # {x0: r0}
+            self._rescaled_error_in_mean = error_in_mean_initializer()
+            self.Delta_r = Delta_r
+            self._interval_sizes = error_in_mean_initializer() # {xi: xii-xi}
+
         self.delta = delta
 
         self.alfa = alfa
 
         if not strategy:
             raise ValueError('Strategy not specified.')
-        elif strategy>3:
-            raise ValueError('Incorrect strategy (should be 1, 2 or 3)')
+        elif strategy>4:
+            raise ValueError('Incorrect strategy (should be 1, 2, 3, or 4)')
         else:
             self.strategy = strategy
 
@@ -99,7 +105,8 @@ class AverageLearner1D(Learner1D):
             points, loss_improvements = self._ask_points_without_adding(n)
         # If there are at least 2 points and the loss difference is too large,
         # sample n/(2*(nth_neighbors+1) times each point of the interval # REVIEW
-        elif self.strategy==1 and self._losses_diff.peekitem(0)[1] > self.delta*max(1,self._scale[1]):
+        elif ((self.strategy==1) # or self.strategy==4)
+          and self._losses_diff.peekitem(0)[1] > self.delta):#*max(1,self._scale[1])):
             x1, x2 = self._losses_diff.peekitem(0)[0]
             # We invest half of the samples on each point. In case n is odd,
             # in order to not introduce any asymmetric bias, we choose at random
@@ -114,9 +121,10 @@ class AverageLearner1D(Learner1D):
             loss_improvements = loss_improvements1+loss_improvements2
         # If the error on the estimate of the mean is too large at x,
         # ask for more samples at x
-        elif self.strategy==2 and self._error_in_mean.peekitem(0)[1] > self.delta:
-                x = self._error_in_mean.peekitem(0)[0]
-                points, loss_improvements = self._ask_for_more_samples(x,n)
+        elif ((self.strategy==2 and self._error_in_mean.peekitem(0)[1] > self.delta)
+          or (self.strategy==4 and self._rescaled_error_in_mean.peekitem(0)[1] > self.delta)):
+            x = self._error_in_mean.peekitem(0)[0]
+            points, loss_improvements = self._ask_for_more_samples(x,n)
         # Otherwise, sample new points
         else:
             points, loss_improvements = self._ask_points_without_adding(n)
@@ -172,6 +180,10 @@ class AverageLearner1D(Learner1D):
             self._number_samples[x] = 1
             self._undersampled_points.add(x)
             self._error_in_mean[x] = np.inf # REVIEW: should be np.inf?
+            if self.strategy==4:
+                self._rescaling_factors[x] = 1 # REVIEW: should be np.inf?
+                self._rescaled_error_in_mean[x] = np.inf # REVIEW: should be np.inf?
+                self._update_interval_sizes(x)
             self._update_losses_diff(x)
         # If re-sampled data point:
         else:
@@ -179,6 +191,33 @@ class AverageLearner1D(Learner1D):
             self.pending_points.discard(x)
             self._update_data_structures_resampling(x, y)
             self._update_losses_diff(x)
+        if (self.strategy==4 and len(self._interval_sizes)):
+            self._update_rescaling_factors()
+
+    def _update_rescaling_factors(self):
+        x_i, minimum_interval_size = self._interval_sizes.peekitem(-1)
+        x_ii = self.neighbors[x_i][1]
+        if (minimum_interval_size < self._rescaled_error_in_mean[x_i]
+            and self._number_samples[x_i] > self.min_samples):
+            # The second condition is used to prevent decreasing the rescaling
+            # factor when there are too few samples and the error is too large
+            self._rescaling_factors[x_i] = self.delta/minimum_interval_size #+= self.Delta_r
+            self._interval_sizes.pop(x_i)
+        if (minimum_interval_size < self._rescaled_error_in_mean[x_ii]
+            and self._number_samples[x_ii] > self.min_samples):
+            self._rescaling_factors[x_ii] = self.delta/minimum_interval_size #+= self.Delta_r
+            try:
+                self._interval_sizes.pop(x_i)
+            except:
+                pass # x_i may have been popped in the previous if
+
+    def _update_interval_sizes(self,x):
+        neighbors = self.neighbors[x]
+        if neighbors[0] is not None:
+            self._interval_sizes[neighbors[0]] = x-neighbors[0]
+        if neighbors[1] is not None:
+            self._interval_sizes[x] = neighbors[1]-x
+        return
 
     def _update_data_moving_avg(self,x,y):
         '''This function is only used in strategy 3'''
@@ -225,6 +264,8 @@ class AverageLearner1D(Learner1D):
         variance_in_mean = sum( [(yj-y_avg)**2 for yj in self._data_samples[x]] )/(n-1)
         t_student = tstud.ppf(1.0 - self.alfa, df=n-1)
         self._error_in_mean[x] = t_student*(variance_in_mean/n)**0.5
+        if self.strategy==4:
+            self._rescaled_error_in_mean[x] = t_student*(variance_in_mean/n)**0.5 * self._rescaling_factors[x]
 
         # We also need to update scale and losses
         super()._update_scale(x, y)
@@ -320,6 +361,7 @@ class AverageLearner1D(Learner1D):
         loss = self.losses[(xs[0],xs[1])] # Recall: the keys of this dict are tuples, not lists
 
         return abs(loss-loss_IC)/loss
+
 
 
     def tell_many(self,x,y):

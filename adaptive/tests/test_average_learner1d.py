@@ -221,14 +221,14 @@ def test_NSR_ISR(max_samples, learners=None, errors=None, sigmas = 0, return_lea
         #    for y in learners[i]._data_samples[x]:
         #        axes[0][i].scatter(x, y, s=2)
         x, y = zip(*sorted(learners[i].data.items()))
-        axes[0][i].plot(x,y,color='tab:blue')
+        axes[0][i].scatter(x,y,color='tab:blue',s=1)
         axes[1][i].plot(list(NSR[i].keys()),list(NSR[i].values()),color='tab:blue')
         axes[2][i].plot(list(ISR[i].keys()),list(ISR[i].values()),color='tab:blue')
         axes[3][i].scatter(list(errors[i].keys()),list(errors[i].values()),color='tab:blue')
     if len(learners)==10:
         for i in np.arange(5):
             x, y = zip(*sorted(learners[i+5].data.items()))
-            axes[0][i].plot(x,y,color='tab:orange',alpha=0.5)
+            axes[0][i].scatter(x,y,color='tab:orange',alpha=0.7,s=1)
             axes[1][i].plot(list(NSR[i+5].keys()),list(NSR[i+5].values()),color='tab:orange',alpha=0.5)
             axes[2][i].plot(list(ISR[i+5].keys()),list(ISR[i+5].values()),color='tab:orange',alpha=0.5)
             axes[3][i].scatter(list(errors[i+5].keys()),list(errors[i+5].values()),color='tab:orange',alpha=0.5)
@@ -242,8 +242,9 @@ def test_NSR_ISR(max_samples, learners=None, errors=None, sigmas = 0, return_lea
         axes[1][i].set_ylim([-0.1,1.1])
         axes[2][i].set_ylim([-0.1,1.1])
         axes[3][i].set_ylim([0.001,0.1])
-        axes[3][i].set_xlim([900,6000])
-        axes[3][i].set_xticks([1000, 5000])
+        axes[3][i].set_xlim([0,11000])
+        axes[3][i].set_xticks([1000, 10000])
+        axes[3][i].ticklabel_format(axis='x',style='sci')
         axes[2][i].set_xlabel("x")
         axes[3][i].set_xlabel("N")
         axes[3][i].set_yscale('log')
