@@ -37,7 +37,7 @@ class AverageLearner1D(Learner1D):
     M : int (>3)
         Number of points taken for the 'moving average'. Only used in strategy 3.
     """
-    def __init__(self, function, bounds, loss_per_interval=None, min_samples=3, strategy=None, delta=0.1, alfa=0.025, M=2, Delta_r=0.5):
+    def __init__(self, function, bounds, loss_per_interval=None, min_samples=3, strategy=None, delta=0.1, alfa=0.025, M=2, Rn=1.5):
         super().__init__(function, bounds, loss_per_interval)
 
         self._data_samples = sortedcontainers.SortedDict() # This SortedDict contains all samples f(x) for each x
@@ -54,11 +54,13 @@ class AverageLearner1D(Learner1D):
 
         self._error_in_mean = error_in_mean_initializer() # This SortedDict contains the estimation errors for
                                                           # each fbar(x) in the form {x0: estimation_error(x0)}
+
         if strategy==4:
             self._rescaling_factors= {} # {x0: r0}
             self._rescaled_error_in_mean = error_in_mean_initializer()
-            self.Delta_r = Delta_r
             self._interval_sizes = error_in_mean_initializer() # {xi: xii-xi}
+            self._error_in_mean_capped = error_in_mean_initializer()
+            self._oversampled_points = error_in_mean_initializer()
 
         self.delta = delta
 
@@ -79,6 +81,8 @@ class AverageLearner1D(Learner1D):
             warnings.warn("M is zero")
 
         self.M = M
+
+        self.Rn = Rn
 
         random.seed(2)
 
@@ -121,10 +125,18 @@ class AverageLearner1D(Learner1D):
             loss_improvements = loss_improvements1+loss_improvements2
         # If the error on the estimate of the mean is too large at x,
         # ask for more samples at x
-        elif ((self.strategy==2 and self._error_in_mean.peekitem(0)[1] > self.delta)
-          or (self.strategy==4 and self._rescaled_error_in_mean.peekitem(0)[1] > self.delta)):
+        elif (self.strategy==2 and self._error_in_mean.peekitem(0)[1] > self.delta):
             x = self._error_in_mean.peekitem(0)[0]
             points, loss_improvements = self._ask_for_more_samples(x,n)
+        elif self.strategy==4:
+            try:
+                if self._error_in_mean_capped.peekitem(0)[1] > self.delta:
+                    x = self._error_in_mean_capped.peekitem(0)[0]
+                    points, loss_improvements = self._ask_for_more_samples(x,n)
+                else:
+                    points, loss_improvements = self._ask_points_without_adding(n)
+            except:
+                points, loss_improvements = self._ask_points_without_adding(n)
         # Otherwise, sample new points
         else:
             points, loss_improvements = self._ask_points_without_adding(n)
@@ -183,6 +195,7 @@ class AverageLearner1D(Learner1D):
             if self.strategy==4:
                 self._rescaling_factors[x] = 1 # REVIEW: should be np.inf?
                 self._rescaled_error_in_mean[x] = np.inf # REVIEW: should be np.inf?
+                self._error_in_mean_capped[x] = np.inf # REVIEW: should be np.inf?
                 self._update_interval_sizes(x)
             self._update_losses_diff(x)
         # If re-sampled data point:
@@ -191,20 +204,39 @@ class AverageLearner1D(Learner1D):
             self.pending_points.discard(x)
             self._update_data_structures_resampling(x, y)
             self._update_losses_diff(x)
+            self._stop_oversampling(x)
         if (self.strategy==4 and len(self._interval_sizes)):
             self._update_rescaling_factors()
+            pass
+
+    def _stop_oversampling(self,x):
+        if self._number_samples[x] > self.Rn*self.total_samples()/len(self.data):
+            try:
+                self._error_in_mean_capped.pop(x)
+                self._oversampled_points[x] = self._number_samples[x]
+            except:
+                pass
+        try:
+            if self._oversampled_points.peekitem(-1)[1] < self.Rn*self.total_samples()/len(self.data):
+                x_overs = self._oversampled_points.peekitem(-1)[0]
+                self._error_in_mean_capped[x_overs] = self._error_in_mean[x_overs]
+                self._oversampled_points.pop(x_overs)
+        except:
+            return
 
     def _update_rescaling_factors(self):
         x_i, minimum_interval_size = self._interval_sizes.peekitem(-1)
         x_ii = self.neighbors[x_i][1]
-        if (minimum_interval_size < self._rescaled_error_in_mean[x_i]
-            and self._number_samples[x_i] > self.min_samples):
+        if (minimum_interval_size < self._error_in_mean[x_i]
+            and self._error_in_mean[x_i] < self.delta):
+            #and self._number_samples[x_i] > self.min_samples):
             # The second condition is used to prevent decreasing the rescaling
             # factor when there are too few samples and the error is too large
             self._rescaling_factors[x_i] = self.delta/minimum_interval_size #+= self.Delta_r
             self._interval_sizes.pop(x_i)
-        if (minimum_interval_size < self._rescaled_error_in_mean[x_ii]
-            and self._number_samples[x_ii] > self.min_samples):
+        if (minimum_interval_size < self._error_in_mean[x_ii]
+            and self._error_in_mean[x_i] < self.delta):
+            #and self._number_samples[x_ii] > self.min_samples):
             self._rescaling_factors[x_ii] = self.delta/minimum_interval_size #+= self.Delta_r
             try:
                 self._interval_sizes.pop(x_i)
@@ -266,6 +298,7 @@ class AverageLearner1D(Learner1D):
         self._error_in_mean[x] = t_student*(variance_in_mean/n)**0.5
         if self.strategy==4:
             self._rescaled_error_in_mean[x] = t_student*(variance_in_mean/n)**0.5 * self._rescaling_factors[x]
+            self._error_in_mean_capped[x] = t_student*(variance_in_mean/n)**0.5 * self._rescaling_factors[x]
 
         # We also need to update scale and losses
         super()._update_scale(x, y)
@@ -382,6 +415,7 @@ def random_sign():
     return 1 if random.random() < 0.5 else -1
 
 def error_in_mean_initializer():
+    '''This initialization orders the dictionary from large to small value'''
     def sorting_rule(key, value):
         return -value
     return sortedcollections.ItemSortedDict(sorting_rule, sortedcontainers.SortedDict())
