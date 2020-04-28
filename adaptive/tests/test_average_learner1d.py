@@ -94,7 +94,8 @@ def test_single_ISR(learner, max_samples, final_plot=True, keep_init=False, titl
 
     return ISR
 
-def test_NSR_ISR(max_samples, learners=None, errors=None, errors_uniform=None, sigmas = 0, plot_errors_uniform=True, return_learners=False, save_plots=False, fig_name=None, extra_learner_specs=None, **learner_kwargs):
+def test_NSR_ISR(max_samples, learners=None, errors=None, errors_uniform=None, sigmas = 0, plot_errors_uniform=True, return_learners=False,
+                 generate_plots=True, save_plots=False, fig_name=None, extra_learner_specs=None, progress_bars='notebook', **learner_kwargs):
     '''Generates 3x5 plots with the estimated function, the ISR and the NSR.
        ---Input---
             max_samples: maximum number of samples (int)
@@ -112,13 +113,21 @@ def test_NSR_ISR(max_samples, learners=None, errors=None, errors_uniform=None, s
                                  (bool)
             return_learners: set to True to return all the learners;
                              set to False to return nothing (bool)
+            generate_plots: set to True to generate plots, either to show or
+                            to save them (bool)
             save_plots: set to True to save animation as .gif (bool)
             fig_name: name of the figure, only used if save_plots==True (str)
             extra_learner_specs: parameters of a second batch of learners to be
                                  plotted in the same figure; it generates a
                                  second loading bar (dict). Example:
-                                 {'strategy':1, 'delta':2, 'min_samples':5}'''
-    from tqdm import tqdm
+                                 {'strategy':1, 'delta':2, 'min_samples':5}
+            progress_bars: set to 'simple' for Python progress bars, set to
+                           'notebook' if running on a notebook, set to None for
+                           no progress bars'''
+    if progress_bars=='simple':
+        from tqdm import tqdm
+    elif progress_bars=='notebook':
+        from tqdm.notebook import tqdm
 
     if save_plots and (not fig_name):
         raise ValueError('fig_name not specified.')
@@ -166,18 +175,18 @@ def test_NSR_ISR(max_samples, learners=None, errors=None, errors_uniform=None, s
         if not errors:
             errors = [{},{},{},{},{},{},{},{},{},{}]
 
-        for i in tqdm(np.arange(5)):
-            while learners[i].total_samples()<max_samples:
-                    xs, _ = learners[i].ask(1)
-                    for xx in xs:
-                        yy = learners[i].function(xx)
-                        learners[i].tell(xx,yy)
-            NSR.append(calculate_NSR(learners[i]))
-            ISR.append(calculate_ISR(learners[i]))
-            errors[i][max_samples] = calculate_L1error(learners[i])
-
-        if len(learners)==10:
-            for i in tqdm(np.arange(5,10)):
+        if progress_bars=='simple' or progress_bars=='notebook':
+            for i in tqdm(np.arange(5)):
+                while learners[i].total_samples()<max_samples:
+                        xs, _ = learners[i].ask(1)
+                        for xx in xs:
+                            yy = learners[i].function(xx)
+                            learners[i].tell(xx,yy)
+                NSR.append(calculate_NSR(learners[i]))
+                ISR.append(calculate_ISR(learners[i]))
+                errors[i][max_samples] = calculate_L1error(learners[i])
+        else:
+            for i in np.arange(5):
                 while learners[i].total_samples()<max_samples:
                         xs, _ = learners[i].ask(1)
                         for xx in xs:
@@ -187,141 +196,177 @@ def test_NSR_ISR(max_samples, learners=None, errors=None, errors_uniform=None, s
                 ISR.append(calculate_ISR(learners[i]))
                 errors[i][max_samples] = calculate_L1error(learners[i])
 
+        if len(learners)==10:
+            if progress_bars=='simple' or progress_bars=='notebook':
+                for i in tqdm(np.arange(5,10)):
+                    while learners[i].total_samples()<max_samples:
+                            xs, _ = learners[i].ask(1)
+                            for xx in xs:
+                                yy = learners[i].function(xx)
+                                learners[i].tell(xx,yy)
+                    NSR.append(calculate_NSR(learners[i]))
+                    ISR.append(calculate_ISR(learners[i]))
+                    errors[i][max_samples] = calculate_L1error(learners[i])
+            else:
+                for i in np.arange(5,10):
+                    while learners[i].total_samples()<max_samples:
+                            xs, _ = learners[i].ask(1)
+                            for xx in xs:
+                                yy = learners[i].function(xx)
+                                learners[i].tell(xx,yy)
+                    NSR.append(calculate_NSR(learners[i]))
+                    ISR.append(calculate_ISR(learners[i]))
+                    errors[i][max_samples] = calculate_L1error(learners[i])
+
+
     # Run uniform learners
     if True:
         if not errors_uniform:
             errors_uniform = [{},{},{},{},{}]
         if plot_errors_uniform:
             learners_uniform = []
-            for i in tqdm(np.arange(5)):
-                n = learners[i].total_samples()
-                avg_samples_per_point = n/len(learners[i].data)
-                x_uniform = np.linspace(learners[i].bounds[0],learners[i].bounds[1],np.ceil(n/avg_samples_per_point))
-                learners_uniform.append(adaptive.AverageLearner1D(learners[i].function, bounds=learners[i].bounds, strategy=1))
-                                    # The strategy is not relevant for the uniform learner, so we just set it to 1
-                for _ in np.arange(avg_samples_per_point):
-                    for xx in x_uniform:
-                        yy = learners_uniform[i].function(xx)
-                        learners_uniform[i].tell(xx,yy)
-                errors_uniform[i][max_samples] = calculate_L1error(learners_uniform[i])
+            if progress_bars=='simple' or progress_bars=='notebook':
+                for i in tqdm(np.arange(5)):
+                    n = learners[i].total_samples()
+                    avg_samples_per_point = n/len(learners[i].data)
+                    x_uniform = np.linspace(learners[i].bounds[0],learners[i].bounds[1],np.ceil(n/avg_samples_per_point))
+                    learners_uniform.append(adaptive.AverageLearner1D(learners[i].function, bounds=learners[i].bounds, strategy=1))
+                                        # The strategy is not relevant for the uniform learner, so we just set it to 1
+                    for _ in np.arange(avg_samples_per_point):
+                        for xx in x_uniform:
+                            yy = learners_uniform[i].function(xx)
+                            learners_uniform[i].tell(xx,yy)
+                    errors_uniform[i][max_samples] = calculate_L1error(learners_uniform[i])
+            else:
+                for i in np.arange(5):
+                    n = learners[i].total_samples()
+                    avg_samples_per_point = n/len(learners[i].data)
+                    x_uniform = np.linspace(learners[i].bounds[0],learners[i].bounds[1],np.ceil(n/avg_samples_per_point))
+                    learners_uniform.append(adaptive.AverageLearner1D(learners[i].function, bounds=learners[i].bounds, strategy=1))
+                                        # The strategy is not relevant for the uniform learner, so we just set it to 1
+                    for _ in np.arange(avg_samples_per_point):
+                        for xx in x_uniform:
+                            yy = learners_uniform[i].function(xx)
+                            learners_uniform[i].tell(xx,yy)
+                    errors_uniform[i][max_samples] = calculate_L1error(learners_uniform[i])
 
+    if generate_plots:
+        # Figure
+        fig, axes = plt.subplots(4,5,figsize=(25/2.54,20/2.54))
 
-    # Figure
-    fig, axes = plt.subplots(4,5,figsize=(25/2.54,20/2.54))
+        # Plot noisy functions
+        if True:
+            x = np.linspace(-1,1,100)
+            y = []
+            for xi in x:
+                y.append(const(xi, a=0, sigma=sigmas))
+            axes[0][0].plot(x,y,alpha=0.2,color='tab:gray')
 
-    # Plot noisy functions
-    if True:
-        x = np.linspace(-1,1,100)
-        y = []
-        for xi in x:
-            y.append(const(xi, a=0, sigma=sigmas))
-        axes[0][0].plot(x,y,alpha=0.2,color='tab:gray')
+            x = np.linspace(-1,1,100)
+            y = []
+            for xi in x:
+                y.append(const(xi, a=0, sigma=sigmas, sigma_end=sigmas*5, bounds=(-1,1)))
+            axes[0][1].plot(x,y,alpha=0.2,color='tab:gray')
 
-        x = np.linspace(-1,1,100)
-        y = []
-        for xi in x:
-            y.append(const(xi, a=0, sigma=sigmas, sigma_end=sigmas*5, bounds=(-1,1)))
-        axes[0][1].plot(x,y,alpha=0.2,color='tab:gray')
+            x = np.linspace(-1,1,100)
+            y = []
+            for xi in x:
+                y.append(peak(xi, peak_width=0.01, offset=0, sigma=sigmas))
+            axes[0][2].plot(x,y,alpha=0.2,color='tab:gray')
 
-        x = np.linspace(-1,1,100)
-        y = []
-        for xi in x:
-            y.append(peak(xi, peak_width=0.01, offset=0, sigma=sigmas))
-        axes[0][2].plot(x,y,alpha=0.2,color='tab:gray')
+            x = np.linspace(-1,1,100)
+            y = []
+            for xi in x:
+                y.append(tanh(xi, stretching=20, offset=0, sigma=sigmas))
+            axes[0][3].plot(x,y,alpha=0.2,color='tab:gray')
 
-        x = np.linspace(-1,1,100)
-        y = []
-        for xi in x:
-            y.append(tanh(xi, stretching=20, offset=0, sigma=sigmas))
-        axes[0][3].plot(x,y,alpha=0.2,color='tab:gray')
+            x = np.linspace(-1,1,100)
+            y = []
+            for xi in x:
+                y.append(lorentz(xi, width=0.5, offset=0, sigma=sigmas*3))
+            axes[0][4].plot(x,y,alpha=0.2,color='tab:gray')
 
-        x = np.linspace(-1,1,100)
-        y = []
-        for xi in x:
-            y.append(lorentz(xi, width=0.5, offset=0, sigma=sigmas*3))
-        axes[0][4].plot(x,y,alpha=0.2,color='tab:gray')
-
-    # Plot learners' data
-    if True:
-        for i in np.arange(5):
-            #for x in learners[i].data.keys():
-            #    for y in learners[i]._data_samples[x]:
-            #        axes[0][i].scatter(x, y, s=2)
-            x, y = zip(*sorted(learners[i].data.items()))
-            axes[0][i].plot(x,y,color='tab:blue',alpha=0.8,marker='.',markersize=5)
-            axes[1][i].plot(list(NSR[i].keys()),list(NSR[i].values()),color='tab:blue')
-            axes[2][i].plot(list(ISR[i].keys()),list(ISR[i].values()),color='tab:blue')
-            axes[3][i].scatter(list(errors[i].keys()),list(errors[i].values()),color='tab:blue',alpha=0.8,marker='v')
-        if len(learners)==10:
+        # Plot learners' data
+        if True:
             for i in np.arange(5):
-                x, y = zip(*sorted(learners[i+5].data.items()))
-                axes[0][i].plot(x,y,color='tab:purple',alpha=0.5,marker='.',markersize=5)
-                axes[1][i].plot(list(NSR[i+5].keys()),list(NSR[i+5].values()),color='tab:purple',alpha=0.5)
-                axes[2][i].plot(list(ISR[i+5].keys()),list(ISR[i+5].values()),color='tab:purple',alpha=0.5)
-                axes[3][i].scatter(list(errors[i+5].keys()),list(errors[i+5].values()),color='tab:purple',alpha=0.8,marker='>')
-        if plot_errors_uniform:
+                #for x in learners[i].data.keys():
+                #    for y in learners[i]._data_samples[x]:
+                #        axes[0][i].scatter(x, y, s=2)
+                x, y = zip(*sorted(learners[i].data.items()))
+                axes[0][i].plot(x,y,color='tab:blue',alpha=0.8,marker='.',markersize=5)
+                axes[1][i].plot(list(NSR[i].keys()),list(NSR[i].values()),color='tab:blue')
+                axes[2][i].plot(list(ISR[i].keys()),list(ISR[i].values()),color='tab:blue')
+                axes[3][i].scatter(list(errors[i].keys()),list(errors[i].values()),color='tab:blue',alpha=0.8,marker='v')
+            if len(learners)==10:
+                for i in np.arange(5):
+                    x, y = zip(*sorted(learners[i+5].data.items()))
+                    axes[0][i].plot(x,y,color='tab:purple',alpha=0.5,marker='.',markersize=5)
+                    axes[1][i].plot(list(NSR[i+5].keys()),list(NSR[i+5].values()),color='tab:purple',alpha=0.5)
+                    axes[2][i].plot(list(ISR[i+5].keys()),list(ISR[i+5].values()),color='tab:purple',alpha=0.5)
+                    axes[3][i].scatter(list(errors[i+5].keys()),list(errors[i+5].values()),color='tab:purple',alpha=0.8,marker='>')
+            if plot_errors_uniform:
+                for i in np.arange(5):
+                    x, y = zip(*sorted(learners_uniform[i].data.items()))
+                    axes[0][i].plot(x,y,color='tab:orange',alpha=0.4,marker='.',markersize=5)
+                    axes[3][i].scatter(list(errors_uniform[i].keys()),list(errors_uniform[i].values()),color='tab:orange',alpha=0.8,marker='^')
+
+        # Specs
+        if True:
             for i in np.arange(5):
-                x, y = zip(*sorted(learners_uniform[i].data.items()))
-                axes[0][i].plot(x,y,color='tab:orange',alpha=0.4,marker='.',markersize=5)
-                axes[3][i].scatter(list(errors_uniform[i].keys()),list(errors_uniform[i].values()),color='tab:orange',alpha=0.8,marker='^')
+                for j in np.arange(3):
+                    axes[j][i].set_xlim([-1,1])
+                    axes[j][i].set_xlim([-1,1])
+                    axes[j][i].set_xlim([-1,1])
+                    axes[j][i].tick_params(labelsize=7)
+                axes[1][i].set_ylim([-0.1,1.1])
+                axes[2][i].set_ylim([-0.1,1.1])
+                axes[3][i].set_ylim([0.001,0.1])
+                axes[3][i].set_xlim([0,11000])
+                axes[0][i].set_xticks([-1,0,1])
+                axes[1][i].set_xticks([-1,0,1])
+                axes[2][i].set_xticks([-1,0,1])
+                axes[1][i].set_yticks([0,0.5,1])
+                axes[2][i].set_yticks([0,0.5,1])
+                axes[3][i].set_xticks([1000, 10000])
+                axes[3][i].ticklabel_format(axis='x',style='sci')
+                axes[0][i].set_xlabel("x")
+                axes[1][i].set_xlabel("x")
+                axes[2][i].set_xlabel("x")
+                axes[3][i].set_xlabel("N")
+                axes[3][i].set_yscale('log')
+                axes[3][i].tick_params(labelsize=7)
+                #axes[3][i].set_xscale('log')
+            axes[0][0].set_ylim([-0.5,0.5])
+            axes[0][1].set_ylim([-1,1])
+            axes[0][2].set_ylim([-1.2,1.2])
+            axes[0][3].set_ylim([-1.2,1.2])
+            axes[0][4].set_ylim([-0.2,2.2])
+            axes[3][1].set_ylim([0.01,1])
 
-    # Specs
-    if True:
-        for i in np.arange(5):
-            for j in np.arange(3):
-                axes[j][i].set_xlim([-1,1])
-                axes[j][i].set_xlim([-1,1])
-                axes[j][i].set_xlim([-1,1])
-                axes[j][i].tick_params(labelsize=7)
-            axes[1][i].set_ylim([-0.1,1.1])
-            axes[2][i].set_ylim([-0.1,1.1])
-            axes[3][i].set_ylim([0.001,0.1])
-            axes[3][i].set_xlim([0,11000])
-            axes[0][i].set_xticks([-1,0,1])
-            axes[1][i].set_xticks([-1,0,1])
-            axes[2][i].set_xticks([-1,0,1])
-            axes[1][i].set_yticks([0,0.5,1])
-            axes[2][i].set_yticks([0,0.5,1])
-            axes[3][i].set_xticks([1000, 10000])
-            axes[3][i].ticklabel_format(axis='x',style='sci')
-            axes[0][i].set_xlabel("x")
-            axes[1][i].set_xlabel("x")
-            axes[2][i].set_xlabel("x")
-            axes[3][i].set_xlabel("N")
-            axes[3][i].set_yscale('log')
-            axes[3][i].tick_params(labelsize=7)
-            #axes[3][i].set_xscale('log')
-        axes[0][0].set_ylim([-0.5,0.5])
-        axes[0][1].set_ylim([-1,1])
-        axes[0][2].set_ylim([-1.2,1.2])
-        axes[0][3].set_ylim([-1.2,1.2])
-        axes[0][4].set_ylim([-0.2,2.2])
-        axes[3][1].set_ylim([0.01,1])
+            axes[0][0].set_ylabel('g(x)')
+            axes[1][0].set_ylabel('NSR(x)')
+            axes[2][0].set_ylabel('ISR(x)')
+            axes[3][0].set_ylabel('Error')
 
-        axes[0][0].set_ylabel('g(x)')
-        axes[1][0].set_ylabel('NSR(x)')
-        axes[2][0].set_ylabel('ISR(x)')
-        axes[3][0].set_ylabel('Error')
+            axes[0][0].set_title('Constant\n+ uniform noise', fontsize=8)
+            axes[0][1].set_title('Constant\n+ linear noise', fontsize=8)
+            axes[0][2].set_title('Peak\n+ uniform noise', fontsize=8)
+            axes[0][3].set_title('Tanh\n+ uniform noise', fontsize=8)
+            axes[0][4].set_title('Lorentz\n+ multipl. noise', fontsize=8)
 
-        axes[0][0].set_title('Constant\n+ uniform noise', fontsize=8)
-        axes[0][1].set_title('Constant\n+ linear noise', fontsize=8)
-        axes[0][2].set_title('Peak\n+ uniform noise', fontsize=8)
-        axes[0][3].set_title('Tanh\n+ uniform noise', fontsize=8)
-        axes[0][4].set_title('Lorentz\n+ multipl. noise', fontsize=8)
+            # for j in np.arange(1,5):
+            #     axes[1][j].set_yticklabels([])
+            #     axes[2][j].set_yticklabels([])
+            #     axes[3][j].set_yticklabels([])
+            # for i in np.arange(5):
+            #     axes[0][i].set_xticklabels([])
+            #     axes[1][i].set_xticklabels([])
+            plt.subplots_adjust(wspace=0.3,hspace=0.4)
 
-        # for j in np.arange(1,5):
-        #     axes[1][j].set_yticklabels([])
-        #     axes[2][j].set_yticklabels([])
-        #     axes[3][j].set_yticklabels([])
-        # for i in np.arange(5):
-        #     axes[0][i].set_xticklabels([])
-        #     axes[1][i].set_xticklabels([])
-        plt.subplots_adjust(wspace=0.3,hspace=0.4)
-
-    if save_plots:
-        plt.savefig(fig_name+'.pdf',dpi=300,bbox_inches='tight')
-    else:
-        plt.show()
+        if save_plots:
+            plt.savefig(fig_name+'.pdf',dpi=300,bbox_inches='tight')
+        else:
+            plt.show()
 
     if return_learners:
         return learners, errors, errors_uniform

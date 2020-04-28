@@ -34,7 +34,7 @@ class AverageLearner1D(Learner1D):
     alfa : float
         The size of the interval of confidence of the estimate of the mean
         is 1-2*alfa
-    M : int (>3)
+    M : int
         Number of points taken for the 'moving average'. Only used in strategy 3.
     """
     def __init__(self, function, bounds, loss_per_interval=None, min_samples=3, strategy=None, delta=0.1, alfa=0.025, M=2, Rn=1.5):
@@ -55,34 +55,33 @@ class AverageLearner1D(Learner1D):
         self._error_in_mean = error_in_mean_initializer() # This SortedDict contains the estimation errors for
                                                           # each fbar(x) in the form {x0: estimation_error(x0)}
 
-        if strategy==4:
-            self._rescaling_factors= {} # {x0: r0}
-            self._rescaled_error_in_mean = error_in_mean_initializer()
-            self._interval_sizes = error_in_mean_initializer() # {xi: xii-xi}
-            self._error_in_mean_capped = error_in_mean_initializer()
-            self._oversampled_points = error_in_mean_initializer()
-
-        self.delta = delta
-
-        self.alfa = alfa
-
         if not strategy:
             raise ValueError('Strategy not specified.')
-        elif strategy>4:
-            raise ValueError('Incorrect strategy (should be 1, 2, 3, or 4)')
+        elif strategy>6:
+            raise ValueError('Incorrect strategy (should be 1, 2, 3, 4, 5, 6)')
         else:
             self.strategy = strategy
 
         if self.strategy == 3:
             self._data = data_initializer_ordered()
+        elif self.strategy==4:
+            self._error_in_mean_capped = error_in_mean_initializer()
+            self._oversampled_points = error_in_mean_initializer()
+            self.Rn = Rn
+        elif self.strategy==5:
+            self._rescaling_factors= {} # {x0: r0}
+            self._rescaled_error_in_mean = error_in_mean_initializer()
+            self._interval_sizes = error_in_mean_initializer() # {xi: xii-xi}
+
+        self.delta = delta
+
+        self.alfa = alfa
 
         if not M:
             import warnings
             warnings.warn("M is zero")
 
         self.M = M
-
-        self.Rn = Rn
 
         random.seed(2)
 
@@ -192,22 +191,32 @@ class AverageLearner1D(Learner1D):
             self._number_samples[x] = 1
             self._undersampled_points.add(x)
             self._error_in_mean[x] = np.inf # REVIEW: should be np.inf?
-            if self.strategy==4:
+            if self.strategy==1:
+                self._update_losses_diff(x)
+            elif self.strategy==4:
+                self._error_in_mean_capped[x] = np.inf # REVIEW: should be np.inf?
+            elif self.strategy==5:
                 self._rescaling_factors[x] = 1 # REVIEW: should be np.inf?
                 self._rescaled_error_in_mean[x] = np.inf # REVIEW: should be np.inf?
-                self._error_in_mean_capped[x] = np.inf # REVIEW: should be np.inf?
                 self._update_interval_sizes(x)
-            self._update_losses_diff(x)
+            elif self.strategy==6:
+                pass
+
+
         # If re-sampled data point:
         else:
             self._update_data(x,y)
             self.pending_points.discard(x)
             self._update_data_structures_resampling(x, y)
-            self._update_losses_diff(x)
-            self._stop_oversampling(x)
-        if (self.strategy==4 and len(self._interval_sizes)):
+            if self.strategy==1:
+                self._update_losses_diff(x)
+            elif self.strategy==4:
+                self._stop_oversampling(x)
+
+        if (self.strategy==5 and len(self._interval_sizes)):
             self._update_rescaling_factors()
-            pass
+        if self.strategy==4:
+            self._reincorporate_oversampled()
 
     def _stop_oversampling(self,x):
         if self._number_samples[x] > self.Rn*self.total_samples()/len(self.data):
@@ -215,7 +224,9 @@ class AverageLearner1D(Learner1D):
                 self._error_in_mean_capped.pop(x)
                 self._oversampled_points[x] = self._number_samples[x]
             except:
-                pass
+                return
+
+    def _reincorporate_oversampled(self):
         try:
             if self._oversampled_points.peekitem(-1)[1] < self.Rn*self.total_samples()/len(self.data):
                 x_overs = self._oversampled_points.peekitem(-1)[0]
@@ -297,8 +308,9 @@ class AverageLearner1D(Learner1D):
         t_student = tstud.ppf(1.0 - self.alfa, df=n-1)
         self._error_in_mean[x] = t_student*(variance_in_mean/n)**0.5
         if self.strategy==4:
-            self._rescaled_error_in_mean[x] = t_student*(variance_in_mean/n)**0.5 * self._rescaling_factors[x]
             self._error_in_mean_capped[x] = t_student*(variance_in_mean/n)**0.5 * self._rescaling_factors[x]
+        elif self.strategy==5:
+            self._rescaled_error_in_mean[x] = t_student*(variance_in_mean/n)**0.5 * self._rescaling_factors[x]
 
         # We also need to update scale and losses
         super()._update_scale(x, y)
