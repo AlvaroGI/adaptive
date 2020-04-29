@@ -65,13 +65,19 @@ class AverageLearner1D(Learner1D):
         if self.strategy == 3:
             self._data = data_initializer_ordered()
         elif self.strategy==4:
+            self.Rn = Rn
+        elif self.strategy==5:
+            self._rescaling_factors = {} # {x0: r0}
+            self._rescaled_error_in_mean = error_in_mean_initializer()
+            self._interval_sizes = error_in_mean_initializer() # {xi: xii-xi}
+        elif self.strategy==6:
+            self._Rescaling_factor = 1
+            self._interval_sizes = error_in_mean_initializer() # {xi: xii-xi}
+        elif self.strategy==8:
             self._error_in_mean_capped = error_in_mean_initializer()
             self._oversampled_points = error_in_mean_initializer()
             self.Rn = Rn
-        elif self.strategy==5:
-            self._rescaling_factors= {} # {x0: r0}
-            self._rescaled_error_in_mean = error_in_mean_initializer()
-            self._interval_sizes = error_in_mean_initializer() # {xi: xii-xi}
+
 
         self.delta = delta
 
@@ -128,15 +134,48 @@ class AverageLearner1D(Learner1D):
             x = self._error_in_mean.peekitem(0)[0]
             points, loss_improvements = self._ask_for_more_samples(x,n)
         elif self.strategy==4:
+            ## Strat 4 based on 1 - UNEFFICIENT METHOD ##
             try:
-                if self._error_in_mean_capped.peekitem(0)[1] > self.delta:
-                    x = self._error_in_mean_capped.peekitem(0)[0]
-                    points, loss_improvements = self._ask_for_more_samples(x,n)
+                i = 0
+                xi, xii = self._losses_diff.peekitem(i)[0]
+                oversampled = ((self._number_samples[xi] > self.Rn*self.total_samples()/len(self.data))
+                                or (self._number_samples[xii] > self.Rn*self.total_samples()/len(self.data)))
+                # If any of the extremes of the interval is oversampled, we do not re-sample any of them
+                while oversampled:
+                    i += 1
+                    xi, xii = self._losses_diff.peekitem(i)[0]
+                    oversampled = ((self._number_samples[xi] > self.Rn*self.total_samples()/len(self.data))
+                                    or (self._number_samples[xii] > self.Rn*self.total_samples()/len(self.data)))
+                if self._losses_diff.peekitem(i)[1] > self.delta:
+                    x1, x2 = self._losses_diff.peekitem(i)[0]
+                    if random.randint(0,1):
+                            points1, loss_improvements1 = self._ask_for_more_samples(x1,n//2)
+                            points2, loss_improvements2 = self._ask_for_more_samples(x2,n-n//2)
+                    else:
+                            points1, loss_improvements1 = self._ask_for_more_samples(x1,n-n//2)
+                            points2, loss_improvements2 = self._ask_for_more_samples(x2,n//2)
+                    points = points1+points2
+                    loss_improvements = loss_improvements1+loss_improvements2
                 else:
                     points, loss_improvements = self._ask_points_without_adding(n)
             except:
                 points, loss_improvements = self._ask_points_without_adding(n)
+            ## Strat 4 based on 2 ##
+            # try:
+            #     if self._error_in_mean_capped.peekitem(0)[1] > self.delta:
+            #         x = self._error_in_mean_capped.peekitem(0)[0]
+            #         points, loss_improvements = self._ask_for_more_samples(x,n)
+            #     else:
+            #         points, loss_improvements = self._ask_points_without_adding(n)
+            # except:
+            #     points, loss_improvements = self._ask_points_without_adding(n)
         # Otherwise, sample new points
+        elif (self.strategy==5 and self._rescaled_error_in_mean.peekitem(0)[1] > self.delta):
+            x = self._rescaled_error_in_mean.peekitem(0)[0]
+            points, loss_improvements = self._ask_for_more_samples(x,n)
+        elif (self.strategy==6 and self._error_in_mean.peekitem(0)[1]*self._Rescaling_factor > self.delta):
+            x = self._error_in_mean.peekitem(0)[0]
+            points, loss_improvements = self._ask_for_more_samples(x,n)
         else:
             points, loss_improvements = self._ask_points_without_adding(n)
 
@@ -191,15 +230,16 @@ class AverageLearner1D(Learner1D):
             self._number_samples[x] = 1
             self._undersampled_points.add(x)
             self._error_in_mean[x] = np.inf # REVIEW: should be np.inf?
-            if self.strategy==1:
+            if self.strategy==1 or self.strategy==4:
                 self._update_losses_diff(x)
-            elif self.strategy==4:
-                self._error_in_mean_capped[x] = np.inf # REVIEW: should be np.inf?
             elif self.strategy==5:
                 self._rescaling_factors[x] = 1 # REVIEW: should be np.inf?
                 self._rescaled_error_in_mean[x] = np.inf # REVIEW: should be np.inf?
                 self._update_interval_sizes(x)
             elif self.strategy==6:
+                self._update_interval_sizes(x)
+            elif self.strategy==8:
+                self._error_in_mean_capped[x] = np.inf # REVIEW: should be np.inf?
                 pass
 
 
@@ -208,14 +248,16 @@ class AverageLearner1D(Learner1D):
             self._update_data(x,y)
             self.pending_points.discard(x)
             self._update_data_structures_resampling(x, y)
-            if self.strategy==1:
+            if self.strategy==1 or self.strategy==4:
                 self._update_losses_diff(x)
-            elif self.strategy==4:
+            elif self.strategy==8:
                 self._stop_oversampling(x)
 
         if (self.strategy==5 and len(self._interval_sizes)):
             self._update_rescaling_factors()
-        if self.strategy==4:
+        if (self.strategy==6 and len(self._interval_sizes)):
+            self._update_Rescaling_factor()
+        if self.strategy==8:
             self._reincorporate_oversampled()
 
     def _stop_oversampling(self,x):
@@ -235,24 +277,43 @@ class AverageLearner1D(Learner1D):
         except:
             return
 
+    def _update_Rescaling_factor(self):
+        x_i, minimum_interval_size = self._interval_sizes.peekitem(-1)
+        x_ii = self.neighbors[x_i][1]
+        if (minimum_interval_size < self._error_in_mean[x_i]
+            and self._error_in_mean[x_i]*self._Rescaling_factor < self.delta):
+            #and self._number_samples[x_i] > self.min_samples):
+            # The second condition is used to prevent decreasing the rescaling
+            # factor when there are too few samples and the error is too large
+            self._Rescaling_factor = self.delta/minimum_interval_size
+            self._interval_sizes.pop(x_i)
+        if (minimum_interval_size < self._error_in_mean[x_ii]
+            and self._error_in_mean[x_ii]*self._Rescaling_factor < self.delta):
+            #and self._number_samples[x_ii] > self.min_samples):
+            self._Rescaling_factor = self.delta/minimum_interval_size
+            try:
+                self._interval_sizes.pop(x_i)
+            except: # x_i may have been popped in the previous if
+                pass
+
     def _update_rescaling_factors(self):
         x_i, minimum_interval_size = self._interval_sizes.peekitem(-1)
         x_ii = self.neighbors[x_i][1]
         if (minimum_interval_size < self._error_in_mean[x_i]
-            and self._error_in_mean[x_i] < self.delta):
+            and self._rescaled_error_in_mean[x_i] < self.delta):
             #and self._number_samples[x_i] > self.min_samples):
             # The second condition is used to prevent decreasing the rescaling
             # factor when there are too few samples and the error is too large
             self._rescaling_factors[x_i] = self.delta/minimum_interval_size #+= self.Delta_r
             self._interval_sizes.pop(x_i)
         if (minimum_interval_size < self._error_in_mean[x_ii]
-            and self._error_in_mean[x_i] < self.delta):
+            and self._rescaled_error_in_mean[x_ii] < self.delta):
             #and self._number_samples[x_ii] > self.min_samples):
             self._rescaling_factors[x_ii] = self.delta/minimum_interval_size #+= self.Delta_r
             try:
                 self._interval_sizes.pop(x_i)
-            except:
-                pass # x_i may have been popped in the previous if
+            except: # x_i may have been popped in the previous if
+                pass
 
     def _update_interval_sizes(self,x):
         neighbors = self.neighbors[x]
@@ -307,8 +368,8 @@ class AverageLearner1D(Learner1D):
         variance_in_mean = sum( [(yj-y_avg)**2 for yj in self._data_samples[x]] )/(n-1)
         t_student = tstud.ppf(1.0 - self.alfa, df=n-1)
         self._error_in_mean[x] = t_student*(variance_in_mean/n)**0.5
-        if self.strategy==4:
-            self._error_in_mean_capped[x] = t_student*(variance_in_mean/n)**0.5 * self._rescaling_factors[x]
+        if self.strategy==8:
+            self._error_in_mean_capped[x] = t_student*(variance_in_mean/n)**0.5
         elif self.strategy==5:
             self._rescaled_error_in_mean[x] = t_student*(variance_in_mean/n)**0.5 * self._rescaling_factors[x]
 

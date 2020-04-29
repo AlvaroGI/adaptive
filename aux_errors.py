@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 '''Auxiliary file used by error-averagelearner.ipynb'''
 
-import random
 from collections import defaultdict
 
 import numpy as np
