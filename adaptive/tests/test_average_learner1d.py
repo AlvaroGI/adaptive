@@ -94,8 +94,144 @@ def test_single_ISR(learner, max_samples, final_plot=True, keep_init=False, titl
 
     return ISR
 
-def test_NSR_ISR(max_samples, learners=None, errors=None, errors_uniform=None, sigmas = 0, plot_errors_uniform=True, return_learners=False,
-                 generate_plots=True, save_plots=False, fig_name=None, extra_learner_specs=None, progress_bars='notebook', **learner_kwargs):
+def test_single_error(learner, max_samples, errors=None, keep_init=False, return_errors=True, generate_plot=True,
+                    save_plot=False, fig_name=None, progress_bars='notebook'):
+    '''Runs the learner until it contains max_samples samples.
+       Then, calculates the error versus x.
+       ---Input---
+            learner: learner to test (learner)
+            errors: dictionary containing the number of samples as key and error
+                    between the real function and the interpolated one as value;
+                    optional (dict)
+            max_samples: maximum number of samples (int)
+            keep_init: if True, keep the initial state of the learner (bool)
+            return_errors: set to True to return the errors (bool)
+            generate_plot: set to True to generate plots, either to show or
+                           to save them (bool)
+            save_plot: set to True to save animation as .gif (bool)
+            fig_name: name of the figure, only used if save_plot==True (str)
+            progress_bars: set to 'simple' for Python progress bars, set to
+                           'notebook' if running on a notebook, set to None for
+                           no progress bars'''
+
+    if progress_bars=='simple':
+        from tqdm import tqdm
+    elif progress_bars=='notebook':
+        from tqdm.notebook import tqdm
+
+    if save_plot and (not fig_name):
+        raise ValueError('fig_name not specified.')
+        assert isinstance(fig_name,str), 'fig_name must be str.'
+
+    if keep_init:
+        learner1 = copy.deepcopy(learner)
+
+    if not errors:
+        errors = [{},{}]
+
+    # Run learner and calculate error
+    N0 = learner.total_samples()
+    if max_samples-N0>0:
+        if progress_bars=='simple' or progress_bars=='notebook':
+            for _ in tqdm(np.arange(max_samples-N0)):
+                xs, _ = learner.ask(1)
+                for xx in xs:
+                    yy = learner.function(xx)
+                    learner.tell(xx,yy)
+        else:
+            for _ in np.arange(max_samples-N0):
+                xs, _ = learner.ask(1)
+                for xx in xs:
+                    yy = learner.function(xx)
+                    learner.tell(xx,yy)
+        errors[0][max_samples] = calculate_L1error(learner)
+
+    # Run uniform learners
+    if True:
+        if progress_bars=='simple' or progress_bars=='notebook':
+            n = learner.total_samples()
+            avg_samples_per_point = n/len(learner.data)
+            x_uniform = np.linspace(learner.bounds[0],learner.bounds[1],np.ceil(n/avg_samples_per_point))
+            learner_uniform = adaptive.AverageLearner1D(learner.function, bounds=learner.bounds, strategy=1)
+            for _ in tqdm(np.arange(avg_samples_per_point)):
+                for xx in x_uniform:
+                    yy = learner_uniform.function(xx)
+                    learner_uniform.tell(xx,yy)
+        else:
+            n = learner.total_samples()
+            avg_samples_per_point = n/len(learner.data)
+            x_uniform = np.linspace(learner.bounds[0],learner.bounds[1],np.ceil(n/avg_samples_per_point))
+            learner_uniform = adaptive.AverageLearner1D(learner.function, bounds=learner.bounds, strategy=1)
+            for _ in np.arange(avg_samples_per_point):
+                for xx in x_uniform:
+                    yy = learner_uniform.function(xx)
+                    learner_uniform.tell(xx,yy)
+        errors[1][max_samples] = calculate_L1error(learner_uniform)
+
+    if generate_plot:
+        # Figure
+        fig, axes = plt.subplots(1,2,figsize=(22/2.54,8/2.54))
+
+        # Plot noisy function
+        if True:
+            x = np.linspace(-1,1,100)
+            y = []
+            for xi in x:
+                y.append(learner.function(xi))
+            axes[0].plot(x,y,alpha=0.3,color='tab:gray',label='Noisy function')
+
+        # Plot learner's data
+        if True:
+            x, y = zip(*sorted(learner.data.items()))
+            axes[0].plot(x, y, alpha = 0.5, linewidth=1)
+            _, err = zip(*sorted(learner._error_in_mean.items()))
+            axes[0].errorbar(x, y, yerr=err, linewidth=0, marker='o', color='k', markersize=2, elinewidth=1, capsize=3, capthick=1, label='Learner data')
+            axes[0].text(-0.8,0.8,'N=%d'%learner.total_samples())
+
+        # Plot errors
+        if True:
+            axes[1].scatter(list(errors[0].keys()),list(errors[0].values()),color='tab:blue',alpha=0.8,marker='v',label='AverageLearner1D')
+            axes[1].scatter(list(errors[1].keys()),list(errors[1].values()),color='tab:orange',alpha=0.8,marker='^',label='Uniform Learner')
+
+        # Specs
+        if True:
+            axes[0].set_xlim(learner.bounds)
+            axes[0].set_xlabel("x")
+            axes[0].legend()
+
+            #axes[1].set_ylim([0.001,0.1])
+            errmin = min([min(errors[0].values()),min(errors[1].values())])
+            errmax = max([max(errors[0].values()),max(errors[1].values())])
+            axes[1].set_ylim([0.9*errmin,1.1*errmax])
+            #axes[1].set_xlim([1,max(errors[0].keys())*1.1])
+            axes[1].ticklabel_format(axis='x',style='sci')
+            axes[1].set_xlabel('N')
+            axes[1].set_ylabel('L1-error')
+            axes[1].set_xscale('log')
+            axes[1].set_yscale('log')
+            axes[1].yaxis.set_label_position("right")
+            axes[1].yaxis.tick_right()
+            axes[1].legend()
+
+            # plt.subplots_adjust(wspace=0.3,hspace=0.4)
+
+        if save_plot:
+            plt.savefig(fig_name+'.pdf',dpi=300,bbox_inches='tight')
+        else:
+            plt.show()
+
+
+
+    if keep_init:
+        learner = copy.deepcopy(learner1)
+
+    if return_errors:
+        return errors
+    else:
+        return
+
+
+def test_NSR_ISR(max_samples, learners=None, errors=None, errors_uniform=None, sigmas = 0, plot_errors_uniform=True, return_learners=False, generate_plots=True, save_plots=False, fig_name=None, extra_learner_specs=None, progress_bars='notebook', **learner_kwargs):
     '''Generates 3x5 plots with the estimated function, the ISR and the NSR.
        ---Input---
             max_samples: maximum number of samples (int)
@@ -217,7 +353,6 @@ def test_NSR_ISR(max_samples, learners=None, errors=None, errors_uniform=None, s
                     NSR.append(calculate_NSR(learners[i]))
                     ISR.append(calculate_ISR(learners[i]))
                     errors[i][max_samples] = calculate_L1error(learners[i])
-
 
     # Run uniform learners
     if True:
@@ -372,8 +507,6 @@ def test_NSR_ISR(max_samples, learners=None, errors=None, errors_uniform=None, s
         return learners, errors, errors_uniform
     else:
         return
-
-
 
 def test_NSR_animation(max_samples, return_learners=False, fps=10, samples_per_frame=100, show_anim=True, save_anim=False, **learner_kwargs):
     '''Calculates the NSR versus x for all the test functions.
