@@ -94,18 +94,21 @@ def test_single_ISR(learner, max_samples, final_plot=True, keep_init=False, titl
 
     return ISR
 
-def test_single_error(learner, max_samples, errors=None, keep_init=False, return_errors=True, generate_plot=True,
-                    save_plot=False, fig_name=None, progress_bars='notebook'):
+def test_single_error(learner, max_samples, errors=None, keep_init=False, return_errors=True, calculate_uniform=False,
+                    generate_plot=True, save_plot=False, fig_name=None, progress_bars='notebook'):
     '''Runs the learner until it contains max_samples samples.
        Then, calculates the error versus x.
        ---Input---
             learner: learner to test (learner)
             errors: dictionary containing the number of samples as key and error
-                    between the real function and the interpolated one as value;
-                    optional (dict)
+                    between the real function and the interpolated one as value
+                    ([0]: learner, [1]: uniform learner, [2]: number of data
+                    points of the learner); optional (dict)
             max_samples: maximum number of samples (int)
             keep_init: if True, keep the initial state of the learner (bool)
             return_errors: set to True to return the errors (bool)
+            calculate_uniform: set to True to calculate uniform learner errors
+                               and plot them (bool)
             generate_plot: set to True to generate plots, either to show or
                            to save them (bool)
             save_plot: set to True to save animation as .gif (bool)
@@ -127,7 +130,7 @@ def test_single_error(learner, max_samples, errors=None, keep_init=False, return
         learner1 = copy.deepcopy(learner)
 
     if not errors:
-        errors = [{},{}]
+        errors = [{},{},{}]
 
     # Run learner and calculate error
     N0 = learner.total_samples()
@@ -145,9 +148,10 @@ def test_single_error(learner, max_samples, errors=None, keep_init=False, return
                     yy = learner.function(xx)
                     learner.tell(xx,yy)
         errors[0][max_samples] = calculate_L1error(learner)
+        errors[2][max_samples] = len(learner.data)
 
     # Run uniform learners
-    if True:
+    if calculate_uniform:
         if progress_bars=='simple' or progress_bars=='notebook':
             n = learner.total_samples()
             avg_samples_per_point = n/len(learner.data)
@@ -191,7 +195,20 @@ def test_single_error(learner, max_samples, errors=None, keep_init=False, return
         # Plot errors
         if True:
             axes[1].scatter(list(errors[0].keys()),list(errors[0].values()),color='tab:blue',alpha=0.8,marker='v',label='AverageLearner1D')
-            axes[1].scatter(list(errors[1].keys()),list(errors[1].values()),color='tab:orange',alpha=0.8,marker='^',label='Uniform Learner')
+            if calculate_uniform:
+                axes[1].scatter(list(errors[1].keys()),list(errors[1].values()),color='tab:orange',alpha=0.8,marker='^',label='Uniform Learner')
+                axes[1].legend()
+
+        # Plot number of data points
+        if True:
+            ax2 = axes[1].twinx()
+            ax2.scatter(list(errors[2].keys()),list(errors[2].values()), marker='o', s=2, color='tab:purple')
+            ax2.set_ylabel('n', color='tab:purple')
+            ax2.tick_params(axis='y', labelcolor='tab:purple')
+            nvec = []
+            Nvec = np.linspace(min(errors[0].keys()),max(errors[0].keys()),100)
+            nvec = Nvec**(1/3)
+            ax2.plot(Nvec,nvec, color='tab:purple', alpha=0.6)
 
         # Specs
         if True:
@@ -200,8 +217,12 @@ def test_single_error(learner, max_samples, errors=None, keep_init=False, return
             axes[0].legend()
 
             #axes[1].set_ylim([0.001,0.1])
-            errmin = min([min(errors[0].values()),min(errors[1].values())])
-            errmax = max([max(errors[0].values()),max(errors[1].values())])
+            if calculate_uniform:
+                errmin = min([min(errors[0].values()),min(errors[1].values())])
+                errmax = max([max(errors[0].values()),max(errors[1].values())])
+            else:
+                errmin = min(errors[0].values())
+                errmax = max(errors[0].values())
             axes[1].set_ylim([0.9*errmin,1.1*errmax])
             #axes[1].set_xlim([1,max(errors[0].keys())*1.1])
             axes[1].ticklabel_format(axis='x',style='sci')
@@ -210,8 +231,9 @@ def test_single_error(learner, max_samples, errors=None, keep_init=False, return
             axes[1].set_xscale('log')
             axes[1].set_yscale('log')
             axes[1].yaxis.set_label_position("right")
+            ax2.yaxis.set_label_position("left")
             axes[1].yaxis.tick_right()
-            axes[1].legend()
+            ax2.yaxis.tick_left()
 
             # plt.subplots_adjust(wspace=0.3,hspace=0.4)
 
@@ -219,8 +241,6 @@ def test_single_error(learner, max_samples, errors=None, keep_init=False, return
             plt.savefig(fig_name+'.pdf',dpi=300,bbox_inches='tight')
         else:
             plt.show()
-
-
 
     if keep_init:
         learner = copy.deepcopy(learner1)

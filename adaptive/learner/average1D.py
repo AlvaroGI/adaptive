@@ -318,9 +318,10 @@ class AverageLearner1D(Learner1D):
     def _update_interval_sizes(self,x):
         neighbors = self.neighbors[x]
         if neighbors[0] is not None:
-            self._interval_sizes[neighbors[0]] = x-neighbors[0]
+        #    self._interval_sizes[neighbors[0]] = x-neighbors[0]
+            self._interval_sizes[neighbors[0]] = ((x-neighbors[0])**2 + (self.data[x]-self.data[neighbors[0]])**2)**0.5
         if neighbors[1] is not None:
-            self._interval_sizes[x] = neighbors[1]-x
+            self._interval_sizes[x] = ((neighbors[1]-x)**2 + (self.data[neighbors[1]]-self.data[x])**2)**0.5
         return
 
     def _update_data_moving_avg(self,x,y):
