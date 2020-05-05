@@ -94,7 +94,7 @@ def test_single_ISR(learner, max_samples, final_plot=True, keep_init=False, titl
 
     return ISR
 
-def test_single_error(learner, max_samples, errors=None, keep_init=False, return_errors=True, calculate_uniform=False,
+def test_single_error(learner, max_samples, errors=None, extrema=None, keep_init=False, return_errors=True, calculate_uniform=False,
                     generate_plot=True, save_plot=False, fig_name=None, progress_bars='notebook'):
     '''Runs the learner until it contains max_samples samples.
        Then, calculates the error versus x.
@@ -104,6 +104,8 @@ def test_single_error(learner, max_samples, errors=None, keep_init=False, return
                     between the real function and the interpolated one as value
                     ([0]: learner, [1]: uniform learner, [2]: number of data
                     points of the learner); optional (dict)
+            extrema: dictionary containing the maximum NSR [0], minimum NSR [1],
+                     maximum ISR [2], and minimum ISR [3]; optional (dict)
             max_samples: maximum number of samples (int)
             keep_init: if True, keep the initial state of the learner (bool)
             return_errors: set to True to return the errors (bool)
@@ -132,6 +134,9 @@ def test_single_error(learner, max_samples, errors=None, keep_init=False, return
     if not errors:
         errors = [{},{},{}]
 
+    if not extrema:
+        extrema = [{},{},{},{}]
+
     # Run learner and calculate error
     N0 = learner.total_samples()
     if max_samples-N0>0:
@@ -149,6 +154,12 @@ def test_single_error(learner, max_samples, errors=None, keep_init=False, return
                     learner.tell(xx,yy)
         errors[0][max_samples] = calculate_L1error(learner)
         errors[2][max_samples] = len(learner.data)
+        maxNS, minNS = calculate_extremal_NS(learner)
+        maxIS, minIS = calculate_extremal_IS(learner)
+        extrema[0][max_samples] = maxNS
+        extrema[1][max_samples] = minNS
+        extrema[2][max_samples] = maxIS
+        extrema[3][max_samples] = minIS
 
     # Run uniform learners
     if calculate_uniform:
@@ -174,7 +185,7 @@ def test_single_error(learner, max_samples, errors=None, keep_init=False, return
 
     if generate_plot:
         # Figure
-        fig, axes = plt.subplots(1,2,figsize=(22/2.54,8/2.54))
+        fig, axes = plt.subplots(1,3,figsize=(30/2.54,6/2.54))
 
         # Plot noisy function
         if True:
@@ -190,51 +201,89 @@ def test_single_error(learner, max_samples, errors=None, keep_init=False, return
             axes[0].plot(x, y, alpha = 0.5, linewidth=1)
             _, err = zip(*sorted(learner._error_in_mean.items()))
             axes[0].errorbar(x, y, yerr=err, linewidth=0, marker='o', color='k', markersize=2, elinewidth=1, capsize=3, capthick=1, label='Learner data')
-            axes[0].text(-0.8,0.8,'N=%d'%learner.total_samples())
+            #axes[0].text(-0.8,0.8,'N=%d'%learner.total_samples())
 
         # Plot errors
         if True:
-            axes[1].scatter(list(errors[0].keys()),list(errors[0].values()),color='tab:blue',alpha=0.8,marker='v',label='AverageLearner1D')
+            axes[1].scatter(list(errors[0].keys()),list(errors[0].values()),color='k',alpha=0.8,marker='v',label='AverageLearner1D')
             if calculate_uniform:
-                axes[1].scatter(list(errors[1].keys()),list(errors[1].values()),color='tab:orange',alpha=0.8,marker='^',label='Uniform Learner')
+                axes[1].scatter(list(errors[1].keys()),list(errors[1].values()),color='tab:purple',alpha=0.8,marker='^',label='Uniform Learner')
                 axes[1].legend()
 
         # Plot number of data points
         if True:
             ax2 = axes[1].twinx()
-            ax2.scatter(list(errors[2].keys()),list(errors[2].values()), marker='o', s=2, color='tab:purple')
-            ax2.set_ylabel('n', color='tab:purple')
-            ax2.tick_params(axis='y', labelcolor='tab:purple')
+            ax2.scatter(list(errors[2].keys()),list(errors[2].values()), marker='D', color='tab:orange')
+            ax2.set_ylabel('n', color='tab:orange')
+            ax2.tick_params(axis='y', labelcolor='tab:orange')
+
+            # Fitting n=a*N^(1/3)+b
+            from scipy.optimize import curve_fit
+            def n3(N,a):
+                return N**(1/3)*a
             nvec = []
             Nvec = np.linspace(min(errors[0].keys()),max(errors[0].keys()),100)
-            nvec = Nvec**(1/3)
-            ax2.plot(Nvec,nvec, color='tab:purple', alpha=0.6)
+            popt, _ = curve_fit(n3, list(errors[2].keys()), list(errors[2].values()))
+            nvec = n3(Nvec, *popt)
+            ax2.plot(Nvec,nvec, color='tab:orange', alpha=0.6)
+            ax2.spines['right'].set_color('tab:orange')
+            ax2.tick_params(axis='y', which='both', colors='tab:orange')
+
+
+        # Plot extrema NSR and ISR
+        if True:
+            axes[2].plot(list(extrema[0].keys()),list(extrema[0].values()),color='tab:blue',alpha=0.8,marker='v')
+            axes[2].plot(list(extrema[1].keys()),list(extrema[1].values()),color='tab:blue',alpha=0.8,marker='^')
+            axes[2].set_ylabel('Extremal NS',color='tab:blue')
+            axes[2].tick_params(axis='y', which='both', colors='tab:blue')
+            ax3 = axes[2].twinx()
+            ax3.plot(list(extrema[2].keys()),list(extrema[2].values()),color='tab:green',alpha=0.8,marker='v')
+            ax3.plot(list(extrema[3].keys()),list(extrema[3].values()),color='tab:green',alpha=0.8,marker='^')
+            ax3.set_ylabel('Extremal IS', color='tab:green')
+            ax3.tick_params(axis='y', which='both', colors='tab:green')
+            ax3.spines['right'].set_color('tab:green')
+            ax3.spines['left'].set_color('tab:blue')
+
 
         # Specs
         if True:
             axes[0].set_xlim(learner.bounds)
             axes[0].set_xlabel("x")
-            axes[0].legend()
+            # axes[0].legend()
 
-            #axes[1].set_ylim([0.001,0.1])
             if calculate_uniform:
                 errmin = min([min(errors[0].values()),min(errors[1].values())])
                 errmax = max([max(errors[0].values()),max(errors[1].values())])
             else:
                 errmin = min(errors[0].values())
                 errmax = max(errors[0].values())
-            axes[1].set_ylim([0.9*errmin,1.1*errmax])
+            axes[1].set_ylim([0.5*errmin,3*errmax])
             #axes[1].set_xlim([1,max(errors[0].keys())*1.1])
             axes[1].ticklabel_format(axis='x',style='sci')
             axes[1].set_xlabel('N')
             axes[1].set_ylabel('L1-error')
             axes[1].set_xscale('log')
             axes[1].set_yscale('log')
-            axes[1].yaxis.set_label_position("right")
-            ax2.yaxis.set_label_position("left")
-            axes[1].yaxis.tick_right()
-            ax2.yaxis.tick_left()
+            axes[1].yaxis.set_label_position("left")
+            ax2.yaxis.set_label_position("right")
+            axes[1].yaxis.tick_left()
+            ax2.yaxis.tick_right()
 
+            axes[2].set_ylim([0.5*min(extrema[1].values()),3*max(extrema[0].values())])
+            ax3.set_ylim([0.5*min(extrema[3].values()),3*max(extrema[2].values())])
+            axes[2].ticklabel_format(axis='x',style='sci')
+            ax3.ticklabel_format(axis='x',style='sci')
+            axes[2].set_xlabel('N')
+            axes[2].set_xscale('log')
+            ax3.set_xscale('log')
+            axes[2].set_yscale('log')
+            ax3.set_yscale('log')
+            axes[2].yaxis.set_label_position("left")
+            ax3.yaxis.set_label_position("right")
+            axes[2].yaxis.tick_left()
+            ax3.yaxis.tick_right()
+
+            plt.subplots_adjust(wspace=0.6)
             # plt.subplots_adjust(wspace=0.3,hspace=0.4)
 
         if save_plot:
@@ -246,7 +295,7 @@ def test_single_error(learner, max_samples, errors=None, keep_init=False, return
         learner = copy.deepcopy(learner1)
 
     if return_errors:
-        return errors
+        return errors, extrema
     else:
         return
 
@@ -660,6 +709,17 @@ def calculate_NSR(learner):
     NSR.update((x, y/maxNS) for x, y in NSR.items())
     return NSR
 
+def calculate_extremal_NS(learner):
+    '''Calculates maximum and minimum number of samples per point (NS) of a
+       learner. This is calculated as number_of_samples(x).
+       ---Output---
+            NS: dictionary where the keys are the points x and the values
+                 are the NS at those points.'''
+    NS = copy.deepcopy(learner._number_samples)
+    maxNS = max(NS.values())
+    minNS = min(NS.values())
+    return maxNS, minNS
+
 def calculate_ISR(learner):
     '''Calculates the interval size ratio (ISR) of a learner. This is
        calculated as interval_size(x_i)/max(interval_size(x)). We identify each
@@ -676,6 +736,23 @@ def calculate_ISR(learner):
     maxIS = max(ISR.values())
     ISR.update((x, y/maxIS) for x, y in ISR.items())
     return ISR
+
+def calculate_extremal_IS(learner):
+    '''Calculates the max and min values of the interval size (IS) of a
+       learner. This is calculated as interval_size(x_i)/max(interval_size(x)).
+       We identify each interval with its mid-point.
+       ---Output---
+            IS: dictionary where the keys are the mid-points of the intervals
+                 and the values are the IS of the intervals.'''
+    points = copy.deepcopy(learner.data)
+    x, _ = zip(*sorted(points.items()))
+    IS = {}
+    for i in np.arange(len(x)-1):
+        x_mid = x[i] + (x[i+1]-x[i])/2
+        IS[x_mid] = x[i+1]-x[i]
+    maxIS = max(IS.values())
+    minIS = min(IS.values())
+    return maxIS, minIS
 
 def calculate_L1error(learner):
     '''Calculates the error (L1-norm) between the real function and the
@@ -780,3 +857,15 @@ def lorentz(x, width=0.5, offset=0, sigma=0, wait=False):
     if wait:
         sleep(random())
     return (1/np.pi)*(0.5*width)/((x-offset)**2+(0.5*width)**2) * np.random.normal(1,sigma)
+
+def lorentz_add(x, width=0.5, offset=0, sigma=0, wait=False):
+    '''Lorentzian + additive gaussian noise.
+       ---Inputs---
+            x: evaluate function at this point (float)
+            width: half-width at half-maximum (float)
+            offset: offset of the peak (float)
+            sigma: std of noise (float)
+            wait: if True, pretend this is a slow function (bool)'''
+    if wait:
+        sleep(random())
+    return (1/np.pi)*(0.5*width)/((x-offset)**2+(0.5*width)**2) + np.random.normal(0,sigma)

@@ -241,8 +241,6 @@ class AverageLearner1D(Learner1D):
             elif self.strategy==8:
                 self._error_in_mean_capped[x] = np.inf # REVIEW: should be np.inf?
                 pass
-
-
         # If re-sampled data point:
         else:
             self._update_data(x,y)
@@ -299,17 +297,17 @@ class AverageLearner1D(Learner1D):
     def _update_rescaling_factors(self):
         x_i, minimum_interval_size = self._interval_sizes.peekitem(-1)
         x_ii = self.neighbors[x_i][1]
-        if (minimum_interval_size < self._error_in_mean[x_i]
-            and self._rescaled_error_in_mean[x_i] < self.delta):
-            #and self._number_samples[x_i] > self.min_samples):
+        if (minimum_interval_size < self._error_in_mean[x_i] and self._rescaled_error_in_mean[x_i] < self.delta):
             # The second condition is used to prevent decreasing the rescaling
             # factor when there are too few samples and the error is too large
+            old_rescaling_factor = self._rescaling_factors[x_i]
             self._rescaling_factors[x_i] = self.delta/minimum_interval_size #+= self.Delta_r
+            self._rescaled_error_in_mean[x_i] = self._rescaled_error_in_mean[x_i] * self._rescaling_factors[x_i] / old_rescaling_factor
             self._interval_sizes.pop(x_i)
-        if (minimum_interval_size < self._error_in_mean[x_ii]
-            and self._rescaled_error_in_mean[x_ii] < self.delta):
-            #and self._number_samples[x_ii] > self.min_samples):
+        if (minimum_interval_size < self._error_in_mean[x_ii] and self._rescaled_error_in_mean[x_ii] < self.delta):
+            old_rescaling_factor = self._rescaling_factors[x_ii]
             self._rescaling_factors[x_ii] = self.delta/minimum_interval_size #+= self.Delta_r
+            self._rescaled_error_in_mean[x_ii] = self._rescaled_error_in_mean[x_ii] * self._rescaling_factors[x_ii] / old_rescaling_factor
             try:
                 self._interval_sizes.pop(x_i)
             except: # x_i may have been popped in the previous if
@@ -373,6 +371,9 @@ class AverageLearner1D(Learner1D):
             self._error_in_mean_capped[x] = t_student*(variance_in_mean/n)**0.5
         elif self.strategy==5:
             self._rescaled_error_in_mean[x] = t_student*(variance_in_mean/n)**0.5 * self._rescaling_factors[x]
+            self._update_interval_sizes(x)
+        elif self.strategy==6:
+            self._update_interval_sizes(x)
 
         # We also need to update scale and losses
         super()._update_scale(x, y)
