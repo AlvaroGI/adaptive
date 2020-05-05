@@ -70,6 +70,7 @@ class AverageLearner1D(Learner1D):
             self._rescaling_factors = {} # {x0: r0}
             self._rescaled_error_in_mean = error_in_mean_initializer()
             self._interval_sizes = error_in_mean_initializer() # {xi: xii-xi}
+            self._relative_interval_sizes = error_in_mean_initializer() # {xi: Delta_xi/Delta_gi}
         elif self.strategy==6:
             self._Rescaling_factor = 1
             self._interval_sizes = error_in_mean_initializer() # {xi: xii-xi}
@@ -236,6 +237,7 @@ class AverageLearner1D(Learner1D):
                 self._rescaling_factors[x] = 1 # REVIEW: should be np.inf?
                 self._rescaled_error_in_mean[x] = np.inf # REVIEW: should be np.inf?
                 self._update_interval_sizes(x)
+                self._update_relative_interval_sizes(x)
             elif self.strategy==6:
                 self._update_interval_sizes(x)
             elif self.strategy==8:
@@ -251,7 +253,7 @@ class AverageLearner1D(Learner1D):
             elif self.strategy==8:
                 self._stop_oversampling(x)
 
-        if (self.strategy==5 and len(self._interval_sizes)):
+        if (self.strategy==5 and len(self._relative_interval_sizes)):
             self._update_rescaling_factors()
         if (self.strategy==6 and len(self._interval_sizes)):
             self._update_Rescaling_factor()
@@ -295,7 +297,7 @@ class AverageLearner1D(Learner1D):
                 pass
 
     def _update_rescaling_factors(self):
-        x_i, minimum_interval_size = self._interval_sizes.peekitem(-1)
+        x_i, minimum_interval_size = self._relative_interval_sizes.peekitem(-1)
         x_ii = self.neighbors[x_i][1]
         if (minimum_interval_size < self._error_in_mean[x_i] and self._rescaled_error_in_mean[x_i] < self.delta):
             # The second condition is used to prevent decreasing the rescaling
@@ -303,13 +305,13 @@ class AverageLearner1D(Learner1D):
             old_rescaling_factor = self._rescaling_factors[x_i]
             self._rescaling_factors[x_i] = self.delta/minimum_interval_size #+= self.Delta_r
             self._rescaled_error_in_mean[x_i] = self._rescaled_error_in_mean[x_i] * self._rescaling_factors[x_i] / old_rescaling_factor
-            self._interval_sizes.pop(x_i)
+            self._relative_interval_sizes.pop(x_i)
         if (minimum_interval_size < self._error_in_mean[x_ii] and self._rescaled_error_in_mean[x_ii] < self.delta):
             old_rescaling_factor = self._rescaling_factors[x_ii]
             self._rescaling_factors[x_ii] = self.delta/minimum_interval_size #+= self.Delta_r
             self._rescaled_error_in_mean[x_ii] = self._rescaled_error_in_mean[x_ii] * self._rescaling_factors[x_ii] / old_rescaling_factor
             try:
-                self._interval_sizes.pop(x_i)
+                self._relative_interval_sizes.pop(x_i)
             except: # x_i may have been popped in the previous if
                 pass
 
@@ -320,6 +322,22 @@ class AverageLearner1D(Learner1D):
             self._interval_sizes[neighbors[0]] = ((x-neighbors[0])**2 + (self.data[x]-self.data[neighbors[0]])**2)**0.5
         if neighbors[1] is not None:
             self._interval_sizes[x] = ((neighbors[1]-x)**2 + (self.data[neighbors[1]]-self.data[x])**2)**0.5
+        return
+
+    def _update_relative_interval_sizes(self,x):
+        neighbors = self.neighbors[x]
+        if neighbors[0] is not None:
+            err = max(self._error_in_mean[neighbors[0]],self._error_in_mean[x])
+            if err is not np.inf:
+                self._relative_interval_sizes[neighbors[0]] = self._interval_sizes[neighbors[0]] / err
+            else:
+                self._relative_interval_sizes[neighbors[0]] = self._interval_sizes[neighbors[0]]
+        if neighbors[1] is not None:
+            err = max(self._error_in_mean[neighbors[1]],self._error_in_mean[x])
+            if err is not np.inf:
+                self._relative_interval_sizes[x] = self._interval_sizes[x] / err
+            else:
+                self._relative_interval_sizes[x] = self._interval_sizes[x]
         return
 
     def _update_data_moving_avg(self,x,y):
@@ -372,6 +390,7 @@ class AverageLearner1D(Learner1D):
         elif self.strategy==5:
             self._rescaled_error_in_mean[x] = t_student*(variance_in_mean/n)**0.5 * self._rescaling_factors[x]
             self._update_interval_sizes(x)
+            self._update_relative_interval_sizes(x)
         elif self.strategy==6:
             self._update_interval_sizes(x)
 
