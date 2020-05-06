@@ -95,7 +95,7 @@ def test_single_ISR(learner, max_samples, final_plot=True, keep_init=False, titl
     return ISR
 
 def test_single_error(learner, max_samples, errors=None, extrema=None, keep_init=False, return_errors=True, calculate_uniform=False,
-                    generate_plot=True, save_plot=False, fig_name=None, progress_bars='notebook'):
+                      fitting_n3=True, generate_plot=True, save_plot=False, fig_name=None, progress_bars='notebook'):
     '''Runs the learner until it contains max_samples samples.
        Then, calculates the error versus x.
        ---Input---
@@ -111,6 +111,7 @@ def test_single_error(learner, max_samples, errors=None, extrema=None, keep_init
             return_errors: set to True to return the errors (bool)
             calculate_uniform: set to True to calculate uniform learner errors
                                and plot them (bool)
+            fitting_n3: set to True to fit n=A*N^(1/3) to n(N) (bool)
             generate_plot: set to True to generate plots, either to show or
                            to save them (bool)
             save_plot: set to True to save animation as .gif (bool)
@@ -216,18 +217,21 @@ def test_single_error(learner, max_samples, errors=None, extrema=None, keep_init
             ax2.scatter(list(errors[2].keys()),list(errors[2].values()), marker='D', color='tab:orange')
             ax2.set_ylabel('n', color='tab:orange')
             ax2.tick_params(axis='y', labelcolor='tab:orange')
-
-            # Fitting n=a*N^(1/3)+b
-            from scipy.optimize import curve_fit
-            def n3(N,a):
-                return N**(1/3)*a
-            nvec = []
-            Nvec = np.linspace(min(errors[0].keys()),max(errors[0].keys()),100)
-            popt, _ = curve_fit(n3, list(errors[2].keys()), list(errors[2].values()))
-            nvec = n3(Nvec, *popt)
-            ax2.plot(Nvec,nvec, color='tab:orange', alpha=0.6)
             ax2.spines['right'].set_color('tab:orange')
             ax2.tick_params(axis='y', which='both', colors='tab:orange')
+
+            # Fitting n=a*N^(1/3)+b
+            if fitting_n3:
+                from scipy.optimize import curve_fit
+                def n3(N,a,b):
+                    return N**(1/b)*a
+                nvec = []
+                Nvec = np.linspace(min(errors[0].keys()),max(errors[0].keys()),100)
+                popt, _ = curve_fit(n3, list(errors[2].keys()), list(errors[2].values()))
+                nvec = n3(Nvec, *popt)
+                print(popt[1])
+                ax2.plot(Nvec,nvec, color='tab:orange', alpha=0.6)
+
 
 
         # Plot extrema NSR and ISR
