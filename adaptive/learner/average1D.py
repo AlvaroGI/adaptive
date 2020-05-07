@@ -57,8 +57,8 @@ class AverageLearner1D(Learner1D):
 
         if not strategy:
             raise ValueError('Strategy not specified.')
-        elif strategy>6:
-            raise ValueError('Incorrect strategy (should be 1, 2, 3, 4, 5, 6)')
+        elif strategy>9:
+            raise ValueError('Incorrect strategy (should be 1, 2, 3, 4, 5, 6, 7, 9)')
         else:
             self.strategy = strategy
 
@@ -74,10 +74,14 @@ class AverageLearner1D(Learner1D):
         elif self.strategy==6:
             self._Rescaling_factor = 1
             self._interval_sizes = error_in_mean_initializer() # {xi: xii-xi}
+        elif self.strategy==7:
+            self._interval_sizes = error_in_mean_initializer() # {xi: xii-xi}
         elif self.strategy==8:
             self._error_in_mean_capped = error_in_mean_initializer()
             self._oversampled_points = error_in_mean_initializer()
             self.Rn = Rn
+        elif self.strategy==9:
+            self._interval_sizes = error_in_mean_initializer() # {xi: xii-xi}
 
 
         self.delta = delta
@@ -177,6 +181,36 @@ class AverageLearner1D(Learner1D):
         elif (self.strategy==6 and self._error_in_mean.peekitem(0)[1]*self._Rescaling_factor > self.delta):
             x = self._error_in_mean.peekitem(0)[0]
             points, loss_improvements = self._ask_for_more_samples(x,n)
+        elif self.strategy==7:
+            points, loss_improvements = self._ask_points_without_adding(n)
+            x = points[0]
+            xi, xii = self._find_neighbors(x, self.neighbors)
+            Delta_gi = self._error_in_mean[xi]
+            Delta_gii = self._error_in_mean[xii]
+            if random.randint(0,1):
+                try:
+                    if self._interval_sizes[xi] < Delta_gi:
+                        points, loss_improvements = self._ask_for_more_samples(xi,n)
+                    elif self._interval_sizes[xii] < Delta_gii:
+                        points, loss_improvements = self._ask_for_more_samples(xii,n)
+                except: # This happens when _interval_sizes[xii] does not exist
+                    if self._interval_sizes[xi] < Delta_gi:
+                        points, loss_improvements = self._ask_for_more_samples(xi,n)
+            else:
+                try:
+                    if self._interval_sizes[xii] < Delta_gii:
+                        points, loss_improvements = self._ask_for_more_samples(xii,n)
+                    elif self._interval_sizes[xi] < Delta_gi:
+                        points, loss_improvements = self._ask_for_more_samples(xi,n)
+                except: # This happens when _interval_sizes[xii] does not exist
+                    if self._interval_sizes[xi] < Delta_gi:
+                        points, loss_improvements = self._ask_for_more_samples(xi,n)
+        elif self.strategy==9:
+            if self._error_in_mean.peekitem(0)[1] > self._interval_sizes.peekitem(-1)[1]:
+                x = self._error_in_mean.peekitem(0)[0]
+                points, loss_improvements = self._ask_for_more_samples(x,n)
+            else:
+                points, loss_improvements = self._ask_points_without_adding(n)
         else:
             points, loss_improvements = self._ask_points_without_adding(n)
 
@@ -240,8 +274,12 @@ class AverageLearner1D(Learner1D):
                 self._update_relative_interval_sizes(x)
             elif self.strategy==6:
                 self._update_interval_sizes(x)
+            elif self.strategy==7:
+                self._update_interval_sizes(x)
             elif self.strategy==8:
                 self._error_in_mean_capped[x] = np.inf # REVIEW: should be np.inf?
+            elif self.strategy==9:
+                self._update_interval_sizes(x)
                 pass
         # If re-sampled data point:
         else:
@@ -392,6 +430,10 @@ class AverageLearner1D(Learner1D):
             self._update_interval_sizes(x)
             self._update_relative_interval_sizes(x)
         elif self.strategy==6:
+            self._update_interval_sizes(x)
+        elif self.strategy==7:
+            self._update_interval_sizes(x)
+        elif self.strategy==9:
             self._update_interval_sizes(x)
 
         # We also need to update scale and losses

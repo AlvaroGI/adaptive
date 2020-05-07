@@ -95,7 +95,7 @@ def test_single_ISR(learner, max_samples, final_plot=True, keep_init=False, titl
     return ISR
 
 def test_single_error(learner, max_samples, errors=None, extrema=None, keep_init=False, return_errors=True, calculate_uniform=False,
-                      fitting_n3=True, generate_plot=True, save_plot=False, fig_name=None, progress_bars='notebook'):
+                      fittings=True, generate_plot=True, save_plot=False, fig_name=None, progress_bars='notebook'):
     '''Runs the learner until it contains max_samples samples.
        Then, calculates the error versus x.
        ---Input---
@@ -111,7 +111,7 @@ def test_single_error(learner, max_samples, errors=None, extrema=None, keep_init
             return_errors: set to True to return the errors (bool)
             calculate_uniform: set to True to calculate uniform learner errors
                                and plot them (bool)
-            fitting_n3: set to True to fit n=A*N^(1/3) to n(N) (bool)
+            fittings: set to True to fit n=A*N^(1/3) to n(N) (bool)
             generate_plot: set to True to generate plots, either to show or
                            to save them (bool)
             save_plot: set to True to save animation as .gif (bool)
@@ -210,6 +210,21 @@ def test_single_error(learner, max_samples, errors=None, extrema=None, keep_init
             if calculate_uniform:
                 axes[1].scatter(list(errors[1].keys()),list(errors[1].values()),color='tab:purple',alpha=0.8,marker='^',label='Uniform Learner')
                 axes[1].legend()
+            # Fitting err=a*N^(-d)
+            if fittings:
+                from scipy.optimize import curve_fit
+                def fit_fun_err(logN,a,d):
+                    return a-logN*d
+
+                # To do a reliable fitting, we log-transform the data
+                x = np.log10(list(errors[0].keys()))
+                y = np.log10(list(errors[0].values()))
+                popt, _ = curve_fit(fit_fun_err, x, y)
+
+                Nvec = np.linspace(min(errors[0].keys()),max(errors[0].keys()),50)
+                errvec = 10**(fit_fun_err(np.log10(Nvec), *popt))
+                print('Error fitting: %.2f*N^(-%.2f)'%(popt[0],popt[1]))
+                axes[1].plot(Nvec,errvec, color='k', alpha=0.6)
 
         # Plot number of data points
         if True:
@@ -220,19 +235,20 @@ def test_single_error(learner, max_samples, errors=None, extrema=None, keep_init
             ax2.spines['right'].set_color('tab:orange')
             ax2.tick_params(axis='y', which='both', colors='tab:orange')
 
-            # Fitting n=a*N^(1/3)+b
-            if fitting_n3:
+            # Fitting n=a*N^(1/b)
+            if fittings:
                 from scipy.optimize import curve_fit
-                def n3(N,a,b):
-                    return N**(1/b)*a
-                nvec = []
-                Nvec = np.linspace(min(errors[0].keys()),max(errors[0].keys()),100)
-                popt, _ = curve_fit(n3, list(errors[2].keys()), list(errors[2].values()))
-                nvec = n3(Nvec, *popt)
-                print(popt[1])
+                def fit_fun_n(logN,a,b):
+                    return a+logN*(1/b)
+                # To do a reliable fitting, we log-transform the data
+                x = np.log10(list(errors[2].keys()))
+                y = np.log10(list(errors[2].values()))
+                popt, _ = curve_fit(fit_fun_n, x, y)
+
+                Nvec = np.linspace(min(errors[2].keys()),max(errors[2].keys()),50)
+                nvec = 10**(fit_fun_n(np.log10(Nvec), *popt))
+                print('n(N) fitting: %.2f*N^(1/%.2f)'%(popt[0],popt[1]))
                 ax2.plot(Nvec,nvec, color='tab:orange', alpha=0.6)
-
-
 
         # Plot extrema NSR and ISR
         if True:
@@ -802,6 +818,47 @@ def plot_fun(function,xlim,N=200,title=None,ylim=None,**function_kwargs):
     if title:
         plt.title(title)
     return
+
+def scaling_linear_interp_error(function,bounds,max_samples):
+    '''Calculates the scaling of the linear interpolation error when the function
+       (without noise) is sampled by adaptive'''
+    from tqdm.notebook import tqdm
+    from scipy.optimize import curve_fit
+
+    learner = adaptive.Learner1D(function, bounds=bounds)
+    err_vs_n = {}
+
+    Nvec = np.round(np.logspace(1.7,np.log10(max_samples),20))
+    for N in tqdm(np.arange(max_samples)):
+        xs, _ = learner.ask(1) # MAKE IT 10??
+        for x in xs:
+            y = learner.function(x)
+            learner.tell(x, y)
+        if N in Nvec:
+            err_vs_n[len(learner.data)] = calculate_L1error(learner)
+
+    def fit_fun(x,a,b):
+        return a-b*x
+
+    # To do a reliable fitting, we log-transform the data
+    x = np.log10(list(err_vs_n.keys()))
+    y = np.log10(list(err_vs_n.values()))
+    popt, _ = curve_fit(fit_fun, x, y)
+
+    nvec = np.linspace(min(err_vs_n.keys()),max(err_vs_n.keys()),100)
+    errvec = 10**(fit_fun(np.log10(nvec), *popt))
+
+    plt.scatter(list(err_vs_n.keys()),list(err_vs_n.values()),color='k')
+    plt.plot(nvec,errvec, color='k', alpha=0.6)
+    plt.xlabel('n')
+    plt.ylabel('L1-error')
+    plt.title('Error = %.2f*n^(-%.2f)'%(popt[0],popt[1]))
+    plt.yscale('log')
+    plt.xscale('log')
+
+    popt[0] = 10**popt[0]
+
+    return popt, nvec, errvec
 
 def const(x,a=0,sigma=0,sigma_end=None,bounds=None,wait=False):
     '''Constant + gaussian noise.
