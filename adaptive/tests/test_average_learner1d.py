@@ -716,7 +716,7 @@ def test_NSR_animation(max_samples, return_learners=False, fps=10, samples_per_f
         return ani, learner1, learner2, learner3, learner4
 
 #____________________________________________________________________
-#______________________________MISC__________________________________
+#______________________CALCULATE MAGNITUDES__________________________
 #____________________________________________________________________
 def calculate_NSR(learner):
     '''Calculates the number of samples ratio (NSR) of a learner. This is
@@ -791,6 +791,79 @@ def calculate_L1error(learner):
     error, error_error = quad(integrand,learner.bounds[0],learner.bounds[1])
 
     return error
+
+#____________________________________________________________________
+#______________________RUN AND PLOT LEARNER__________________________
+#____________________________________________________________________
+def plot_learner(learner):
+    '''Plot learner'''
+    x = np.linspace(-1,1,100)
+    y = []
+    for xi in x:
+        y.append(learner.function(xi))
+    plt.plot(x,y,alpha=0.3,color='tab:gray')
+
+    x, y = zip(*sorted(learner.data.items()))
+    try: # AverageLearner1D
+        plt.plot(x, y, alpha = 0.5, linewidth=1)
+        _, err = zip(*sorted(learner._error_in_mean.items()))
+        plt.errorbar(x, y, yerr=err, linewidth=0, marker='o', color='k',
+                     markersize=2, elinewidth=1, capsize=3, capthick=1)
+        plt.title('N=%d'%learner.total_samples())
+    except: # Learner1D
+        plt.plot(x, y, linewidth=1, marker='o')
+        plt.title('N=%d'%len(learner.data))
+    plt.xlim(learner.bounds)
+
+def run_N(learner,N):
+    '''Runs the learner until it has N samples'''
+    from tqdm.notebook import tqdm
+    try: # AverageLearner1D
+        N0 = learner.total_samples()
+        if N-N0>0:
+            for _ in tqdm(np.arange(N-N0)):
+                    xs, _ = learner.ask(1)
+                    for x in xs:
+                        y = learner.function(x)
+                        learner.tell(x, y)
+    except: # Learner1D
+        N0 = len(learner.data)
+        if N-N0>0:
+            for _ in tqdm(np.arange(N-N0)):
+                    xs, _ = learner.ask(1)
+                    for x in xs:
+                        y = learner.function(x)
+                        learner.tell(x, y)
+
+def run_N_more(learner,N):
+    '''Runs the learner to obtain N more samples'''
+    from tqdm.notebook import tqdm
+    for _ in tqdm(np.arange(N)):
+            xs, _ = learner.ask(1)
+            for x in xs:
+                y = learner.function(x)
+                learner.tell(x, y)
+
+def simple_liveplot(learner, goal):
+    #%matplotlib inline
+    import time
+    import pylab as pl
+    from IPython import display
+    while not goal(learner):
+        xs, _ = learner.ask(1)
+        for x in xs:
+            y = learner.function(x)
+            learner.tell(x, y)
+        x, y = zip(*sorted(learner.data.items()))
+        pl.xlim(-1.1,1.1)
+        pl.ylim(-1.3,1.3)
+        pl.cla()
+        pl.plot(x, y)
+        for x in learner.data.keys():
+            for y in learner._data_samples[x]:
+                pl.scatter(x, y, s=2)
+        display.clear_output(wait=True)
+        display.display(pl.gcf())
 
 #____________________________________________________________________
 #____________________________FUNCTIONS_______________________________
@@ -930,3 +1003,14 @@ def lorentz_add(x, width=0.5, offset=0, sigma=0, wait=False):
     if wait:
         sleep(random())
     return (1/np.pi)*(0.5*width)/((x-offset)**2+(0.5*width)**2) + np.random.normal(0,sigma)
+
+def heaviside(x, y0=0.5, sigma=0, wait=False):
+    '''Heaviside + additive gaussian noise.
+       ---Inputs---
+            x: evaluate function at this point (float)
+            y0: value of the function at x=0 (float)
+            sigma: std of noise (float)
+            wait: if True, pretend this is a slow function (bool)'''
+    if wait:
+        sleep(random())
+    return np.heaviside(x,y0) - 0.5 + np.random.normal(0,sigma)

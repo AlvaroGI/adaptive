@@ -57,8 +57,8 @@ class AverageLearner1D(Learner1D):
 
         if not strategy:
             raise ValueError('Strategy not specified.')
-        elif strategy>9:
-            raise ValueError('Incorrect strategy (should be 1, 2, 3, 4, 5, 6, 7, 9)')
+        elif strategy>10:
+            raise ValueError('Incorrect strategy (should be 1, 2, 3, 4, 5, 6, 7, 9, 10)')
         else:
             self.strategy = strategy
 
@@ -81,6 +81,9 @@ class AverageLearner1D(Learner1D):
             self._oversampled_points = error_in_mean_initializer()
             self.Rn = Rn
         elif self.strategy==9:
+            self._interval_sizes = error_in_mean_initializer() # {xi: xii-xi}
+        elif self.strategy==10:
+            self._Rescaling_factor = 1
             self._interval_sizes = error_in_mean_initializer() # {xi: xii-xi}
 
 
