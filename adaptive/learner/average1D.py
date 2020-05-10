@@ -214,6 +214,21 @@ class AverageLearner1D(Learner1D):
                 points, loss_improvements = self._ask_for_more_samples(x,n)
             else:
                 points, loss_improvements = self._ask_points_without_adding(n)
+
+
+                ################
+        elif self.strategy==10:
+            Err_j = self._calculate_Err_newsample()
+            Err_i = self._calculate_Err_resample()
+            #print(Err_i,Err_j,'Resampling:',Err_i>Err_j)
+            if Err_i > Err_j:
+                x = self._error_in_mean.peekitem(0)[0]
+                points, loss_improvements = self._ask_for_more_samples(x,n)
+            else:
+                points, loss_improvements = self._ask_points_without_adding(n)
+                ################
+
+
         else:
             points, loss_improvements = self._ask_points_without_adding(n)
 
@@ -223,6 +238,72 @@ class AverageLearner1D(Learner1D):
                 self.tell_pending(p)
 
         return points, loss_improvements
+
+    def _calculate_Err_newsample(self):
+        '''Calculates the estimated increase in the error when
+           a new point is sampled inside the largest loss interval'''
+        # Linear error
+        xj, xjj = self.losses.peekitem(0)[0]
+        yj = self.data[xj]
+        yjj = self.data[xjj]
+        dj = ((xj-xjj)**2+(yj-yjj)**2)**0.5
+        if True: # Estimate h_j
+            xj_ = self.neighbors[xj][0]
+            xj2 = self.neighbors[xjj][1]
+            if (xj_ is None) and (xj2 is None):
+                hj = np.abs(xjj-xj)/np.abs(yjj-yj)
+            elif xj_ is None:
+                yj2 = self.data[xj2]
+                aa = (yj2-yj)/(xj2-xj)
+                bb = yj - xj*aa
+                hh = np.abs(aa*xjj - yjj + bb)/(aa**2+1)**0.5
+                hj = hh
+            elif xj2 is None:
+                yj_ = self.data[xj_]
+                a_ = (yjj-yj_)/(xjj-xj_)
+                b_ = yj_ - xj_*a_
+                h_ = np.abs(a_*xj - yj + b_)/(a_**2+1)**0.5
+                hj = h_
+            else:
+                yj_ = self.data[xj_]
+                yj2 = self.data[xj2]
+                a_ = (yjj-yj_)/(xjj-xj_)
+                b_ = yj_ - xj_*a_
+                h_ = np.abs(a_*xj - yj + b_)/(a_**2+1)**0.5
+                aa = (yj2-yj)/(xj2-xj)
+                bb = yj - xj*aa
+                hh = np.abs(aa*xjj - yjj + bb)/(aa**2+1)**0.5
+                hj = (h_+hh)*0.5
+        Err_lin = 0.5 * dj * hj
+
+        # Noise error
+        t_student = tstud.ppf(1.0 - self.alfa, df=self.min_samples-1)
+        nj = self._number_samples[xj]
+        var_j = sum( [(y-yj)**2 for y in self._data_samples[xj]] )/(nj-1)
+        Delta_gj = self._error_in_mean[xj]
+        Delta_gjj = self._error_in_mean[xjj]
+        Err_Delta = 0.5 * np.abs(xjj-xj) * (t_student * (var_j / self.min_samples)**0.5 - (Delta_gj+Delta_gjj)/2)
+        #return dj
+        return Err_lin-Err_Delta
+
+    def _calculate_Err_resample(self):
+        '''Calculates the estimated increase in the error when
+           the largest uncertainty point is re-sampled'''
+        # Noise error
+        xi = self._error_in_mean.peekitem(0)[0]
+        ni = self._number_samples[xi]
+        Delta_gi = self._error_in_mean[xi]
+        xi_ = self.neighbors[xi][0]
+        xii = self.neighbors[xi][1]
+        if xi_ is None:
+            Delta_x = np.abs(xii-xi)
+        elif xii is None:
+            Delta_x = np.abs(xi-xi_)
+        else:
+            Delta_x = np.abs(xii-xi_)
+        Err_Delta = 0.5 * Delta_gi * (1-(ni/(ni+1))**0.5) * Delta_x
+        #return Delta_gi
+        return Err_Delta
 
     def _ask_for_more_samples(self,x,n):
         points = [x] * n
@@ -282,6 +363,8 @@ class AverageLearner1D(Learner1D):
             elif self.strategy==8:
                 self._error_in_mean_capped[x] = np.inf # REVIEW: should be np.inf?
             elif self.strategy==9:
+                self._update_interval_sizes(x)
+            elif self.strategy==10:
                 self._update_interval_sizes(x)
                 pass
         # If re-sampled data point:
@@ -437,6 +520,8 @@ class AverageLearner1D(Learner1D):
         elif self.strategy==7:
             self._update_interval_sizes(x)
         elif self.strategy==9:
+            self._update_interval_sizes(x)
+        elif self.strategy==10:
             self._update_interval_sizes(x)
 
         # We also need to update scale and losses
