@@ -97,7 +97,7 @@ def test_single_ISR(learner, max_samples, final_plot=True, keep_init=False, titl
 def test_single_error(learner, max_samples, errors=None, extrema=None, keep_init=False, return_errors=True, calculate_uniform=False,
                       fittings=True, generate_plot=True, save_plot=False, fig_name=None, progress_bars='notebook'):
     '''Runs the learner until it contains max_samples samples.
-       Then, calculates the error versus x.
+       Then, calculates the error and extrema NS and IS versus N.
        ---Input---
             learner: learner to test (learner)
             errors: dictionary containing the number of samples as key and error
@@ -795,9 +795,9 @@ def calculate_L1error(learner):
 #____________________________________________________________________
 #______________________RUN AND PLOT LEARNER__________________________
 #____________________________________________________________________
-def plot_learner(learner):
+def plot_learner(learner,equalaxes=False):
     '''Plot learner'''
-    x = np.linspace(-1,1,100)
+    x = np.linspace(learner.bounds[0],learner.bounds[1],100)
     y = []
     for xi in x:
         y.append(learner.function(xi))
@@ -814,6 +814,8 @@ def plot_learner(learner):
         plt.plot(x, y, linewidth=1, marker='o')
         plt.title('N=%d'%len(learner.data))
     plt.xlim(learner.bounds)
+    if equalaxes:
+        plt.gca().set_aspect('equal', adjustable='box')
 
 def run_N(learner,N):
     '''Runs the learner until it has N samples'''

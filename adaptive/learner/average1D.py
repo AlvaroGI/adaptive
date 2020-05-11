@@ -67,10 +67,10 @@ class AverageLearner1D(Learner1D):
         elif self.strategy==4:
             self.Rn = Rn
         elif self.strategy==5:
-            self._rescaling_factors = {} # {x0: r0}
-            self._rescaled_error_in_mean = error_in_mean_initializer()
+#            self._rescaling_factors = {} # {x0: r0}
+            self._rescaled_error_in_mean = error_in_mean_initializer() # {xi: Delta_gi/min(Delta_g_{i},Delta_g_{i-1})}
             self._interval_sizes = error_in_mean_initializer() # {xi: xii-xi}
-            self._relative_interval_sizes = error_in_mean_initializer() # {xi: Delta_xi/Delta_gi}
+#            self._relative_interval_sizes = error_in_mean_initializer() # {xi: Delta_xi/Delta_gi}
         elif self.strategy==6:
             self._Rescaling_factor = 1
             self._interval_sizes = error_in_mean_initializer() # {xi: xii-xi}
@@ -178,9 +178,12 @@ class AverageLearner1D(Learner1D):
             # except:
             #     points, loss_improvements = self._ask_points_without_adding(n)
         # Otherwise, sample new points
-        elif (self.strategy==5 and self._rescaled_error_in_mean.peekitem(0)[1] > self.delta):
-            x = self._rescaled_error_in_mean.peekitem(0)[0]
-            points, loss_improvements = self._ask_for_more_samples(x,n)
+        elif self.strategy==5:
+            if self._rescaled_error_in_mean.peekitem(0)[1] > self.delta:
+                x = self._rescaled_error_in_mean.peekitem(0)[0]
+                points, loss_improvements = self._ask_for_more_samples(x,n)
+            else:
+                points, loss_improvements = self._ask_points_without_adding(n)
         elif (self.strategy==6 and self._error_in_mean.peekitem(0)[1]*self._Rescaling_factor > self.delta):
             x = self._error_in_mean.peekitem(0)[0]
             points, loss_improvements = self._ask_for_more_samples(x,n)
@@ -214,9 +217,6 @@ class AverageLearner1D(Learner1D):
                 points, loss_improvements = self._ask_for_more_samples(x,n)
             else:
                 points, loss_improvements = self._ask_points_without_adding(n)
-
-
-                ################
         elif self.strategy==10:
             Err_j = self._calculate_Err_newsample()
             Err_i = self._calculate_Err_resample()
@@ -226,9 +226,6 @@ class AverageLearner1D(Learner1D):
                 points, loss_improvements = self._ask_for_more_samples(x,n)
             else:
                 points, loss_improvements = self._ask_points_without_adding(n)
-                ################
-
-
         else:
             points, loss_improvements = self._ask_points_without_adding(n)
 
@@ -352,10 +349,11 @@ class AverageLearner1D(Learner1D):
             if self.strategy==1 or self.strategy==4:
                 self._update_losses_diff(x)
             elif self.strategy==5:
-                self._rescaling_factors[x] = 1 # REVIEW: should be np.inf?
+                #self._rescaling_factors[x] = 1 # REVIEW: should be np.inf?
                 self._rescaled_error_in_mean[x] = np.inf # REVIEW: should be np.inf?
                 self._update_interval_sizes(x)
-                self._update_relative_interval_sizes(x)
+                self._update_rescaled_error_in_mean(x,'new')
+                #self._update_relative_interval_sizes(x)
             elif self.strategy==6:
                 self._update_interval_sizes(x)
             elif self.strategy==7:
@@ -377,12 +375,45 @@ class AverageLearner1D(Learner1D):
             elif self.strategy==8:
                 self._stop_oversampling(x)
 
-        if (self.strategy==5 and len(self._relative_interval_sizes)):
-            self._update_rescaling_factors()
+        #if (self.strategy==5 and len(self._relative_interval_sizes)):
+        #    self._update_rescaling_factors()
         if (self.strategy==6 and len(self._interval_sizes)):
             self._update_Rescaling_factor()
         if self.strategy==8:
             self._reincorporate_oversampled()
+
+    def _update_rescaled_error_in_mean(self,x,point_type):
+        '''Updates self._rescaled_error_in_mean; point_type must be "new" or
+           "resampled". '''
+        assert point_type=='new' or point_type=='resampled', 'point_type must be "new" or "resampled"'
+
+        xleft, xright = self.neighbors[x]
+        if xleft is None and xright is None:
+            return
+        if xleft is None:
+            dleft = self._interval_sizes[x]
+        else:
+            dleft = self._interval_sizes[xleft]
+            xll = self.neighbors[xleft][0]
+            if xll is None:
+                self._rescaled_error_in_mean[xleft] = self._error_in_mean[xleft] / self._interval_sizes[xleft]
+            else:
+                self._rescaled_error_in_mean[xleft] = self._error_in_mean[xleft] / min(self._interval_sizes[xll],
+                                                                                       self._interval_sizes[xleft])
+        if xright is None:
+            dright = self._interval_sizes[xleft]
+        else:
+            dright = self._interval_sizes[x]
+            xrr = self.neighbors[xright][1]
+            if xrr is None:
+                self._rescaled_error_in_mean[xright] = self._error_in_mean[xright] / self._interval_sizes[x]
+            else:
+                self._rescaled_error_in_mean[xright] = self._error_in_mean[xright] / min(self._interval_sizes[x],
+                                                                                         self._interval_sizes[xright])
+
+        if point_type=='resampled':
+            self._rescaled_error_in_mean[x] = self._error_in_mean[x] / min(dleft,dright)
+        return
 
     def _stop_oversampling(self,x):
         if self._number_samples[x] > self.Rn*self.total_samples()/len(self.data):
@@ -512,9 +543,9 @@ class AverageLearner1D(Learner1D):
         if self.strategy==8:
             self._error_in_mean_capped[x] = t_student*(variance_in_mean/n)**0.5
         elif self.strategy==5:
-            self._rescaled_error_in_mean[x] = t_student*(variance_in_mean/n)**0.5 * self._rescaling_factors[x]
             self._update_interval_sizes(x)
-            self._update_relative_interval_sizes(x)
+            self._update_rescaled_error_in_mean(x,'resampled')
+            #self._update_relative_interval_sizes(x)
         elif self.strategy==6:
             self._update_interval_sizes(x)
         elif self.strategy==7:
