@@ -95,7 +95,7 @@ def test_single_ISR(learner, max_samples, final_plot=True, keep_init=False, titl
     return ISR
 
 def test_single_error(learner, max_samples, errors=None, extrema=None, keep_init=False, return_errors=True, calculate_uniform=False,
-                      fittings=True, generate_plot=True, save_plot=False, fig_name=None, progress_bars='notebook'):
+                      fittings=True, generate_plot=True, ylim=None, save_plot=False, fig_name=None, progress_bars='notebook'):
     '''Runs the learner until it contains max_samples samples.
        Then, calculates the error and extrema NS and IS versus N.
        ---Input---
@@ -114,6 +114,8 @@ def test_single_error(learner, max_samples, errors=None, extrema=None, keep_init
             fittings: set to True to fit n=A*N^(1/3) to n(N) (bool)
             generate_plot: set to True to generate plots, either to show or
                            to save them (bool)
+            ylim: y-limits of the function plot; if set to None, the limits are
+                  automatic (tuple of floats)
             save_plot: set to True to save animation as .gif (bool)
             fig_name: name of the figure, only used if save_plot==True (str)
             progress_bars: set to 'simple' for Python progress bars, set to
@@ -199,9 +201,9 @@ def test_single_error(learner, max_samples, errors=None, extrema=None, keep_init
         # Plot learner's data
         if True:
             x, y = zip(*sorted(learner.data.items()))
-            axes[0].plot(x, y, alpha = 0.5, linewidth=1)
+            axes[0].plot(x, y, linewidth=1)
             _, err = zip(*sorted(learner._error_in_mean.items()))
-            axes[0].errorbar(x, y, yerr=err, linewidth=0, marker='o', color='k', markersize=2, elinewidth=1, capsize=3, capthick=1, label='Learner data')
+            axes[0].errorbar(x, y, yerr=err, linewidth=0, marker='o', color='k', markersize=2, elinewidth=1, capsize=3, capthick=1, label='Learner data', alpha=0.5)
             #axes[0].text(-0.8,0.8,'N=%d'%learner.total_samples())
 
         # Plot errors
@@ -270,6 +272,8 @@ def test_single_error(learner, max_samples, errors=None, extrema=None, keep_init
             axes[0].set_xlim(learner.bounds)
             axes[0].set_xlabel("x")
             # axes[0].legend()
+            if ylim:
+                axes[0].set_ylim(ylim)
 
             if calculate_uniform:
                 errmin = min([min(errors[0].values()),min(errors[1].values())])
@@ -795,7 +799,7 @@ def calculate_L1error(learner):
 #____________________________________________________________________
 #______________________RUN AND PLOT LEARNER__________________________
 #____________________________________________________________________
-def plot_learner(learner,equalaxes=False):
+def plot_learner(learner,equalaxes=False,ylim=None):
     '''Plot learner'''
     x = np.linspace(learner.bounds[0],learner.bounds[1],100)
     y = []
@@ -816,6 +820,8 @@ def plot_learner(learner,equalaxes=False):
     plt.xlim(learner.bounds)
     if equalaxes:
         plt.gca().set_aspect('equal', adjustable='box')
+    if ylim:
+        plt.ylim(ylim)
 
 def run_N(learner,N):
     '''Runs the learner until it has N samples'''
