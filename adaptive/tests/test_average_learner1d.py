@@ -192,7 +192,7 @@ def test_single_error(learner, max_samples, errors=None, extrema=None, keep_init
 
         # Plot noisy function
         if True:
-            x = np.linspace(-1,1,100)
+            x = np.linspace(learner.bounds[0],learner.bounds[1],100)
             y = []
             for xi in x:
                 y.append(learner.function(xi))
@@ -201,9 +201,10 @@ def test_single_error(learner, max_samples, errors=None, extrema=None, keep_init
         # Plot learner's data
         if True:
             x, y = zip(*sorted(learner.data.items()))
-            axes[0].plot(x, y, linewidth=1)
+            axes[0].plot(x, y, linewidth=2)
             _, err = zip(*sorted(learner._error_in_mean.items()))
-            axes[0].errorbar(x, y, yerr=err, linewidth=0, marker='o', color='k', markersize=2, elinewidth=1, capsize=3, capthick=1, label='Learner data', alpha=0.5)
+            axes[0].errorbar(x, y, yerr=err, linewidth=0, marker='o', color='k', markersize=2,
+                             elinewidth=1, capsize=3, capthick=1, label='Learner data', alpha=0.5)
             #axes[0].text(-0.8,0.8,'N=%d'%learner.total_samples())
 
         # Plot errors
@@ -799,20 +800,20 @@ def calculate_L1error(learner):
 #____________________________________________________________________
 #______________________RUN AND PLOT LEARNER__________________________
 #____________________________________________________________________
-def plot_learner(learner,equalaxes=False,ylim=None):
+def plot_learner(learner,equalaxes=False,ylim=None,alphafun=0.3,alphaline=1,alphabars=0.3):
     '''Plot learner'''
     x = np.linspace(learner.bounds[0],learner.bounds[1],100)
     y = []
     for xi in x:
         y.append(learner.function(xi))
-    plt.plot(x,y,alpha=0.3,color='tab:gray')
+    plt.plot(x,y,alpha=alphafun,color='tab:orange')
 
     x, y = zip(*sorted(learner.data.items()))
     try: # AverageLearner1D
-        plt.plot(x, y, alpha = 0.5, linewidth=1)
+        plt.plot(x, y, linewidth=2, alpha=alphaline)
         _, err = zip(*sorted(learner._error_in_mean.items()))
         plt.errorbar(x, y, yerr=err, linewidth=0, marker='o', color='k',
-                     markersize=2, elinewidth=1, capsize=3, capthick=1)
+                     markersize=2, elinewidth=1, capsize=3, capthick=1, alpha=alphabars)
         plt.title('N=%d'%learner.total_samples())
     except: # Learner1D
         plt.plot(x, y, linewidth=1, marker='o')
