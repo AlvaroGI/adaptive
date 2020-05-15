@@ -13,6 +13,8 @@ from functools import partial
 from scipy.interpolate import interp1d
 from scipy.integrate import quad
 
+from matplotlib.ticker import ScalarFormatter, NullFormatter, LogFormatter
+
 # For animations
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
@@ -289,6 +291,10 @@ def test_single_error(learner, max_samples, errors=None, extrema=None, keep_init
             axes[1].set_ylabel('L1-error')
             axes[1].set_xscale('log')
             axes[1].set_yscale('log')
+            ax2.set_yscale('log')
+            ax2.yaxis.set_major_formatter(LogFormatter(labelOnlyBase=10))
+            ax2.yaxis.set_minor_formatter(LogFormatter(minor_thresholds=(2,0.6)))
+            #ax2.ticklabel_format(style='plain', axis='y')
             axes[1].yaxis.set_label_position("left")
             ax2.yaxis.set_label_position("right")
             axes[1].yaxis.tick_left()
