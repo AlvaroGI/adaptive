@@ -983,17 +983,18 @@ def peak(x, peak_width=0.01, offset=0, sigma=0, wait=False):
         sleep(random())
     return x + peak_width**2 / (peak_width**2 + (x - offset)**2) + np.random.normal(0,sigma)
 
-def tanh(x, stretching=10, offset=0, sigma=0, wait=False):
+def tanh(x, stretching=10, height=1, offset=0, sigma=0, wait=False):
     '''Tanh + uniform gaussian noise.
        ---Inputs---
             x: evaluate function at this point (float)
             stretching: larger values make the transition steeper (float)
+            height: the tanh goes from -height to +height (float)
             offset: offset of the peak (float)
             sigma: std of noise (float)
             wait: if True, pretend this is a slow function (bool)'''
     if wait:
         sleep(random())
-    return math.tanh((x-offset)*stretching) + np.random.normal(0,sigma)
+    return math.tanh((x-offset)*stretching)*height + np.random.normal(0,sigma)
 
 def lorentz(x, width=0.5, offset=0, sigma=0, wait=False):
     '''Lorentzian + multiplicative gaussian noise.
