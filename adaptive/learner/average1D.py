@@ -37,7 +37,7 @@ class AverageLearner1D(Learner1D):
     M : int
         Number of points taken for the 'moving average'. Only used in strategy 3.
     """
-    def __init__(self, function, bounds, loss_per_interval=None, min_samples=3, strategy=None, delta=0.1, alfa=0.025, M=2, Rn=1.5):
+    def __init__(self, function, bounds, loss_per_interval=None, min_samples=3, min_Delta_g=0, strategy=None, delta=0.1, alfa=0.025, M=2, Rn=1.5):
         super().__init__(function, bounds, loss_per_interval)
 
         self._data_samples = sortedcontainers.SortedDict() # This SortedDict contains all samples f(x) for each x
@@ -71,6 +71,7 @@ class AverageLearner1D(Learner1D):
             self._rescaled_error_in_mean = error_in_mean_initializer() # {xi: Delta_gi/min(Delta_g_{i},Delta_g_{i-1})}
             self._interval_sizes = error_in_mean_initializer() # {xi: xii-xi}
 #            self._relative_interval_sizes = error_in_mean_initializer() # {xi: Delta_xi/Delta_gi}
+            self._min_Delta_g = min_Delta_g
         elif self.strategy==6:
             self._Rescaling_factor = 1
             self._interval_sizes = error_in_mean_initializer() # {xi: xii-xi}
@@ -179,8 +180,9 @@ class AverageLearner1D(Learner1D):
             #     points, loss_improvements = self._ask_points_without_adding(n)
         # Otherwise, sample new points
         elif self.strategy==5:
-            if self._rescaled_error_in_mean.peekitem(0)[1] > self.delta:
-                x = self._rescaled_error_in_mean.peekitem(0)[0]
+            x, resc_error = self._rescaled_error_in_mean.peekitem(0)
+            if (resc_error > self.delta
+                and self._error_in_mean[x] > self._min_Delta_g):
                 points, loss_improvements = self._ask_for_more_samples(x,n)
             else:
                 points, loss_improvements = self._ask_points_without_adding(n)
