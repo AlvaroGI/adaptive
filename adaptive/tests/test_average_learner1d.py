@@ -1030,3 +1030,20 @@ def heaviside(x, y0=0.5, sigma=0, wait=False):
     if wait:
         sleep(random())
     return np.heaviside(x,y0) - 0.5 + np.random.normal(0,sigma)
+
+def sinusoid(x, A=1, freq=1, offset=0, chirp=False, sigma=0, wait=False):
+    '''Sinus + additive gaussian noise.
+       ---Inputs---
+            x: evaluate function at this point (float)
+            A: amplitude (float)
+            freq: frequency (float)
+            offset: offset of the sinus (float)
+            chirp: set to False for sin(x); set to True for sin(x^2) (bool)
+            sigma: std of noise (float)
+            wait: if True, pretend this is a slow function (bool)'''
+    if wait:
+        sleep(random())
+    if chirp:
+        return A*np.sin((x-offset)**2*freq) + np.random.normal(0,sigma)
+    else:
+        return A*np.sin((x-offset)*freq) + np.random.normal(0,sigma)
