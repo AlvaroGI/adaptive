@@ -806,23 +806,27 @@ def calculate_L1error(learner):
 #____________________________________________________________________
 #______________________RUN AND PLOT LEARNER__________________________
 #____________________________________________________________________
-def plot_learner(learner,equalaxes=False,ylim=None,alphafun=0.3,alphaline=1,alphabars=0.3):
+def plot_learner(learner,equalaxes=False,ylim=None,alphafun=0.3,alphaline=1,alphabars=0.3,Nfun=100):
     '''Plot learner'''
-    x = np.linspace(learner.bounds[0],learner.bounds[1],100)
-    y = []
-    for xi in x:
-        y.append(learner.function(xi))
-    plt.plot(x,y,alpha=alphafun,color='tab:orange')
+    xfun = np.linspace(learner.bounds[0],learner.bounds[1],Nfun)
+    yfun = []
+    for xi in xfun:
+        yfun.append(learner.function(xi))
 
     x, y = zip(*sorted(learner.data.items()))
     try: # AverageLearner1D
-        plt.plot(x, y, linewidth=2, alpha=alphaline)
+        plt.plot(xfun,yfun,alpha=alphafun,color='tab:orange')
+
+        plt.plot(x, y, color='tab:blue', linewidth=1, alpha=alphaline)
         _, err = zip(*sorted(learner._error_in_mean.items()))
         plt.errorbar(x, y, yerr=err, linewidth=0, marker='o', color='k',
                      markersize=2, elinewidth=1, capsize=3, capthick=1, alpha=alphabars)
         plt.title('N=%d'%learner.total_samples())
     except: # Learner1D
-        plt.plot(x, y, linewidth=1, marker='o')
+        plt.plot(xfun,yfun,linewidth=5,alpha=alphafun,color='tab:orange')
+
+        plt.plot(x, y, linewidth=1, color='tab:blue', marker='o', markersize=2,
+                 markeredgecolor='k', markerfacecolor='k')
         plt.title('N=%d'%len(learner.data))
     plt.xlim(learner.bounds)
     if equalaxes:
@@ -882,17 +886,18 @@ def simple_liveplot(learner, goal = lambda l: l.total_samples()==500, N_batch = 
                 plt.xlim(learner.bounds[0],learner.bounds[1])
                 plt.plot(xfun, yfun0, color='k', linewidth=1)
                 plt.plot(x, y, linewidth=2, alpha=alphaline)
+                plt.autoscale(False)
+
                 _, err = zip(*sorted(learner._error_in_mean.items()))
                 plt.errorbar(x, y, yerr=err, linewidth=0, marker='o', color='k',
                              markersize=2, elinewidth=1, capsize=3, capthick=1, alpha=alphabars)
                 plt.title('N=%d, n=%d'%(learner.total_samples(),len(learner.data)))
-
-                plt.autoscale(False)
                 plt.plot(xfun, yfun, alpha=alphafun, color='tab:orange')
             except: # Learner1D
                 plt.xlim(learner.bounds[0],learner.bounds[1])
                 plt.plot(xfun, yfun, alpha=alphafun ,color='tab:orange')
-                plt.plot(x, y, linewidth=1, marker='o')
+                plt.plot(x, y, linewidth=1, color='tab:blue', marker='o', markersize=2,
+                         markeredgecolor='k', markerfacecolor='k')
                 plt.title('N=%d'%len(learner.data))
             display.clear_output(wait=True)
             display.display(plt.gcf())

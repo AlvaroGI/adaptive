@@ -37,7 +37,7 @@ class AverageLearner1D(Learner1D):
     M : int
         Number of points taken for the 'moving average'. Only used in strategy 3.
     """
-    def __init__(self, function, bounds, loss_per_interval=None, min_samples=3, strategy=None, delta=0.1, alfa=0.025, min_Delta_g=0, max_samples=np.inf, M=2, Rn=1.5):
+    def __init__(self, function, bounds, loss_per_interval=None, min_samples=3, neighbor_sampling=0.3, strategy=None, delta=0.1, alfa=0.025, min_Delta_g=0, max_samples=np.inf, M=2, Rn=1.5):
         super().__init__(function, bounds, loss_per_interval)
 
         self._data_samples = sortedcontainers.SortedDict() # This SortedDict contains all samples f(x) for each x
@@ -88,10 +88,11 @@ class AverageLearner1D(Learner1D):
             self._Rescaling_factor = 1
             self._interval_sizes = error_in_mean_initializer() # {xi: xii-xi}
 
-
         self.delta = delta
 
         self.alfa = alfa
+
+        self.neighbor_sampling = neighbor_sampling
 
         if not M:
             import warnings
@@ -124,8 +125,7 @@ class AverageLearner1D(Learner1D):
             points, loss_improvements = self._ask_points_without_adding(n)
         # If there are at least 2 points and the loss difference is too large,
         # sample n/(2*(nth_neighbors+1) times each point of the interval # REVIEW
-        elif ((self.strategy==1) # or self.strategy==4)
-          and self._losses_diff.peekitem(0)[1] > self.delta):#*max(1,self._scale[1])):
+        elif ((self.strategy==1) and self._losses_diff.peekitem(0)[1] > self.delta):#*max(1,self._scale[1])):
             x1, x2 = self._losses_diff.peekitem(0)[0]
             # We invest half of the samples on each point. In case n is odd,
             # in order to not introduce any asymmetric bias, we choose at random
@@ -138,8 +138,6 @@ class AverageLearner1D(Learner1D):
                     points2, loss_improvements2 = self._ask_for_more_samples(x2,n//2)
             points = points1+points2
             loss_improvements = loss_improvements1+loss_improvements2
-        # If the error on the estimate of the mean is too large at x,
-        # ask for more samples at x
         elif (self.strategy==2 and self._error_in_mean.peekitem(0)[1] > self.delta):
             x = self._error_in_mean.peekitem(0)[0]
             points, loss_improvements = self._ask_for_more_samples(x,n)
@@ -170,16 +168,6 @@ class AverageLearner1D(Learner1D):
                     points, loss_improvements = self._ask_points_without_adding(n)
             except:
                 points, loss_improvements = self._ask_points_without_adding(n)
-            ## Strat 4 based on 2 ##
-            # try:
-            #     if self._error_in_mean_capped.peekitem(0)[1] > self.delta:
-            #         x = self._error_in_mean_capped.peekitem(0)[0]
-            #         points, loss_improvements = self._ask_for_more_samples(x,n)
-            #     else:
-            #         points, loss_improvements = self._ask_points_without_adding(n)
-            # except:
-            #     points, loss_improvements = self._ask_points_without_adding(n)
-        # Otherwise, sample new points
         elif self.strategy==5:
             x, resc_error = self._rescaled_error_in_mean.peekitem(0)
             if (resc_error > self.delta
@@ -533,9 +521,21 @@ class AverageLearner1D(Learner1D):
 
         self._number_samples[x] = self._number_samples[x]+1
         n = self._number_samples[x]
+
         if (x in self._undersampled_points) and (n >= self.min_samples):
-            #print(n)
-            self._undersampled_points.discard(x)
+            xleft, xright = self.neighbors[x]
+            n = self._number_samples[x]
+
+            if xleft and xright:
+                nneighbor = 0.5*(self._number_samples[xleft] + self._number_samples[xright])
+            elif xleft:
+                nneighbor = self._number_samples[xleft]
+            elif xright:
+                nneighbor = self._number_samples[xright]
+            else:
+                nneighbor = 0
+            if n > self.neighbor_sampling * nneighbor:
+                self._undersampled_points.discard(x)
 
         # We compute the error in the estimation of the mean as
         # the std of the mean multiplied by a t-Student factor to ensure that
