@@ -170,9 +170,7 @@ class AverageLearner1D(Learner1D):
                 points, loss_improvements = self._ask_points_without_adding(n)
         elif self.strategy==5:
             x, resc_error = self._rescaled_error_in_mean.peekitem(0)
-            if (resc_error > self.delta
-                and self._error_in_mean[x] > self._min_Delta_g
-                and self._number_samples[x] < self._max_samples):
+            if (resc_error > self.delta):
                 points, loss_improvements = self._ask_for_more_samples(x,n)
             else:
                 points, loss_improvements = self._ask_points_without_adding(n)
@@ -382,26 +380,29 @@ class AverageLearner1D(Learner1D):
         xleft, xright = self.neighbors[x]
         if xleft is None and xright is None:
             return
-        if xleft is None:
+
+        if (xleft is None):
             dleft = self._interval_sizes[x]
         else:
             dleft = self._interval_sizes[xleft]
-            xll = self.neighbors[xleft][0]
-            if xll is None:
-                self._rescaled_error_in_mean[xleft] = self._error_in_mean[xleft] / self._interval_sizes[xleft]
-            else:
-                self._rescaled_error_in_mean[xleft] = self._error_in_mean[xleft] / min(self._interval_sizes[xll],
-                                                                                       self._interval_sizes[xleft])
-        if xright is None:
+            if self._rescaled_error_in_mean.__contains__(xleft):
+                xll = self.neighbors[xleft][0]
+                if xll is None:
+                    self._rescaled_error_in_mean[xleft] = self._error_in_mean[xleft] / self._interval_sizes[xleft]
+                else:
+                    self._rescaled_error_in_mean[xleft] = self._error_in_mean[xleft] / min(self._interval_sizes[xll],
+                                                                                           self._interval_sizes[xleft])
+        if (xright is None):
             dright = self._interval_sizes[xleft]
         else:
             dright = self._interval_sizes[x]
-            xrr = self.neighbors[xright][1]
-            if xrr is None:
-                self._rescaled_error_in_mean[xright] = self._error_in_mean[xright] / self._interval_sizes[x]
-            else:
-                self._rescaled_error_in_mean[xright] = self._error_in_mean[xright] / min(self._interval_sizes[x],
-                                                                                         self._interval_sizes[xright])
+            if self._rescaled_error_in_mean.__contains__(xright):
+                xrr = self.neighbors[xright][1]
+                if xrr is None:
+                    self._rescaled_error_in_mean[xright] = self._error_in_mean[xright] / self._interval_sizes[x]
+                else:
+                    self._rescaled_error_in_mean[xright] = self._error_in_mean[xright] / min(self._interval_sizes[x],
+                                                                                             self._interval_sizes[xright])
 
         if point_type=='resampled':
             self._rescaled_error_in_mean[x] = self._error_in_mean[x] / min(dleft,dright)
@@ -444,6 +445,7 @@ class AverageLearner1D(Learner1D):
                 pass
 
     def _update_rescaling_factors(self):
+        '''FUNCTION NOT USED CURRENTLY'''
         x_i, minimum_interval_size = self._relative_interval_sizes.peekitem(-1)
         x_ii = self.neighbors[x_i][1]
         if (minimum_interval_size < self._error_in_mean[x_i] and self._rescaled_error_in_mean[x_i] < self.delta):
@@ -558,6 +560,16 @@ class AverageLearner1D(Learner1D):
             self._update_interval_sizes(x)
         elif self.strategy==10:
             self._update_interval_sizes(x)
+
+        #--------------
+        #--------------
+        #--------------
+        if (self._rescaled_error_in_mean.__contains__(x)
+            and (self._error_in_mean[x] <= self._min_Delta_g or self._number_samples[x] >= self._max_samples)):
+            _ = self._rescaled_error_in_mean.pop(x)
+        #--------------
+        #--------------
+        #--------------
 
         # We also need to update scale and losses
         super()._update_scale(x, y)
