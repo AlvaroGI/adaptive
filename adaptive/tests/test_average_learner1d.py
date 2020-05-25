@@ -905,6 +905,8 @@ def simple_liveplot(learner, goal = lambda l: l.total_samples()==500, N_batch = 
         display.clear_output(wait=True)
         display.display(pl.gcf())
         plot_learner(learner)
+    display.clear_output(wait=True)
+
 
 
 #____________________________________________________________________
