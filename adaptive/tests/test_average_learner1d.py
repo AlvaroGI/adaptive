@@ -726,6 +726,126 @@ def test_NSR_animation(max_samples, return_learners=False, fps=10, samples_per_f
     else:
         return ani, learner1, learner2, learner3, learner4
 
+def experiment_deltaN(N, n_epoch, epsilon_a, Delta_delta, N_plot, learner, liveplot=False, printslope=False, return_delta=False, return_learner=False):
+    from scipy import stats
+    from IPython import display
+    learner0 = copy.deepcopy(learner)
+
+    # Plot parameters
+    alphafun=0.3
+    alphaline=1
+    alphabars=0.3
+    N_fun=100
+
+
+    logNvec = []
+    lognvec = []
+
+    xfun = np.linspace(learner0.bounds[0],learner0.bounds[1],N_fun)
+    yfun0 = learner0.function(xfun, sigma=0)
+
+    yfun = []
+    for xi in xfun:
+        yfun.append(learner0.function(xi))
+
+    for N in np.arange(N):
+        # Train learner
+        xs, _ = learner0.ask(1)
+        for x in xs:
+            y = learner0.function(x)
+            learner0.tell(x, y)
+
+        N = N+1
+        if N>learner0.min_samples: #This is to ensure that n>1 and logn>-inf
+            # Log data
+            lognvec.append(np.log10(len(learner0.data)))
+            logNvec.append(np.log10(N))
+
+            # Check data
+            if len(logNvec)==learner0.min_samples*n_epoch:
+                # Linear regression
+                slope, intercept, r_value, p_value, std_err = stats.linregress(logNvec,lognvec)
+
+                # Check slope
+                if slope <= (1-epsilon_a)/5:
+                    d0 = learner0.delta
+                    learner0.delta = learner0.delta + Delta_delta #* (1+epsilon_delta)
+                    if printslope:
+                        print('slope = %.2f < 0.2*(1-epsilon_a) (+)'%slope)
+                        print('..... \u03B4 = %.3f ---> %.3f'%(d0,learner0.delta))
+                elif slope >= (1+epsilon_a)/5:
+                    d0 = learner0.delta
+                    learner0.delta = max(0, learner0.delta - Delta_delta) #* (1-epsilon_delta)
+                    if printslope:
+                        print('slope = %.2f > 0.2*(1+epsilon_a) (-)'%slope)
+                        print('..... \u03B4 = %.3f ---> %.3f'%(d0,learner0.delta))
+
+                #x = np.array(logNvec)
+                #y = np.array(lognvec)
+                #plt.scatter(x,y)
+                #plt.plot(x,x*slope+intercept)
+
+                # Restart data
+                lognvec = []
+                logNvec = []
+
+            # Plot
+            if N%N_plot == 0 and liveplot:
+                x, y = zip(*sorted(learner0.data.items()))
+                plt.cla()
+                plt.xlim(learner0.bounds[0],learner0.bounds[1])
+                plt.plot(xfun, yfun0, color='k', linewidth=1)
+                plt.plot(x, y, linewidth=2, alpha=alphaline)
+                plt.autoscale(False)
+
+                _, err = zip(*sorted(learner0._error_in_mean.items()))
+                plt.errorbar(x, y, yerr=err, linewidth=0, marker='o', color='k',
+                             markersize=2, elinewidth=1, capsize=3, capthick=1, alpha=alphabars)
+                plt.title('N=%d, n=%d'%(learner0.total_samples(),len(learner0.data)))
+                plt.plot(xfun, yfun, alpha=alphafun, color='tab:orange')
+                display.clear_output(wait=True)
+                display.display(plt.gcf())
+
+    if liveplot:
+        display.clear_output(wait=True)
+    error = calculate_L1error(learner0)
+
+    if return_delta:
+        return error, learner0.delta
+    elif return_learner:
+        return error, learner0
+    else:
+        return error
+
+def plot_experiment_deltaN(x,y,z,title='Title'):
+    import numpy as np
+    import matplotlib
+    import matplotlib.pyplot as plt
+
+    z = np.array(z)
+
+    fig, ax = plt.subplots()
+    im = ax.imshow(z)
+
+    # We want to show all ticks...
+    ax.set_xticks(np.arange(len(x)))
+    ax.set_yticks(np.arange(len(y)))
+    # ... and label them with the respective list entries
+    ax.set_xticklabels(x)
+    ax.set_yticklabels(y)
+
+    # Loop over data dimensions and create text annotations.
+    for i in range(len(y)):
+        for j in range(len(x)):
+            text = ax.text(j, i, '%.3f'%z[i, j],
+                           ha="center", va="center", color="w")
+    ax.set_ylim([len(y)-0.5,-0.5])
+    ax.set_title(title)
+    ax.set_xlabel('eps_a')
+    ax.set_ylabel('\u0394\u03B4')
+    fig.tight_layout()
+    plt.show()
+
 #____________________________________________________________________
 #______________________CALCULATE MAGNITUDES__________________________
 #____________________________________________________________________
