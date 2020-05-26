@@ -84,11 +84,14 @@ class AverageLearner1D_parallel(Learner1D):
             points, loss_improvements = self._ask_points_without_adding(n)
         # Else
         else:
-            x, resc_error = self._rescaled_error_in_mean.peekitem(0)
-            # Resampling condition
-            if (resc_error > self.delta):
-                points, loss_improvements = self._ask_for_more_samples(x,n)
-            # Sample new point
+            if len(self._rescaled_error_in_mean): # This is in case _resc.._mean is empty (e.g. when sigma=0)
+                x, resc_error = self._rescaled_error_in_mean.peekitem(0)
+                # Resampling condition
+                if (resc_error > self.delta):
+                        points, loss_improvements = self._ask_for_more_samples(x,n)
+                # Sample new point
+                else:
+                        points, loss_improvements = self._ask_points_without_adding(n)
             else:
                 points, loss_improvements = self._ask_points_without_adding(n)
 
