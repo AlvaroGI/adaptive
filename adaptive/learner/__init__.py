@@ -3,6 +3,7 @@
 from contextlib import suppress
 
 from adaptive.learner.average1D import AverageLearner1D
+from adaptive.learner.average1D_parallel import AverageLearner1D_parallel
 from adaptive.learner.average2D import AverageLearner2D
 from adaptive.learner.average_learner import AverageLearner
 from adaptive.learner.balancing_learner import BalancingLearner
@@ -16,6 +17,7 @@ from adaptive.learner.learnerND import LearnerND
 __all__ = [
     "AverageLearner",
     "AverageLearner1D",
+    "AverageLearner1D_parallel",
     "AverageLearner2D",
     "BalancingLearner",
     "BaseLearner",

@@ -926,7 +926,7 @@ def calculate_L1error(learner):
 #____________________________________________________________________
 #______________________RUN AND PLOT LEARNER__________________________
 #____________________________________________________________________
-def plot_learner(learner,equalaxes=False,ylim=None,alphafun=0.3,alphaline=1,alphabars=0.3,Nfun=100):
+def plot_learner(learner,equalaxes=False,ylim=None,alphafun=0.3,alphaline=1,alphabars=0.3,Nfun=200):
     '''Plot learner'''
     xfun = np.linspace(learner.bounds[0],learner.bounds[1],Nfun)
     yfun = []
@@ -935,9 +935,15 @@ def plot_learner(learner,equalaxes=False,ylim=None,alphafun=0.3,alphaline=1,alph
 
     x, y = zip(*sorted(learner.data.items()))
     try: # AverageLearner1D
+        yfun0 = []
+        for xi in xfun:
+            yfun0.append(learner.function(xi,sigma=0))
+
+        plt.plot(xfun,yfun0,color='k', linewidth=1)
+        plt.autoscale(False)
         plt.plot(xfun,yfun,alpha=alphafun,color='tab:orange')
 
-        plt.plot(x, y, color='tab:blue', linewidth=1, alpha=alphaline)
+        plt.plot(x, y, color='tab:blue', linewidth=2, alpha=alphaline)
         _, err = zip(*sorted(learner._error_in_mean.items()))
         plt.errorbar(x, y, yerr=err, linewidth=0, marker='o', color='k',
                      markersize=2, elinewidth=1, capsize=3, capthick=1, alpha=alphabars)
@@ -988,7 +994,12 @@ def simple_liveplot(learner, goal = lambda l: l.total_samples()==500, N_batch = 
     import pylab as pl
     from IPython import display
     xfun = np.linspace(learner.bounds[0],learner.bounds[1],N_fun)
-    yfun0 = learner.function(xfun, sigma=0)
+    try:
+        yfun0 = learner.function(xfun, sigma=0)
+    except:
+        yfun0 = []
+        for xi in xfun:
+            yfun0.append(learner.function(xi,sigma=0))
 
     yfun = []
     for xi in xfun:
@@ -1022,10 +1033,16 @@ def simple_liveplot(learner, goal = lambda l: l.total_samples()==500, N_batch = 
             display.clear_output(wait=True)
             display.display(plt.gcf())
     except KeyboardInterrupt:
+        plt.cla()
         display.clear_output(wait=True)
         display.display(pl.gcf())
-        plot_learner(learner)
+        plot_learner(learner, Nfun=N_fun)
     display.clear_output(wait=True)
+
+
+#____________________________________________________________________
+#_______________FINAL VERSION PARALLELIZED LEARNER___________________
+#____________________________________________________________________
 
 
 
