@@ -22,20 +22,32 @@ class AverageLearner1D_parallel(Learner1D):
 
     New parameters (wrt Learner1D)
     ------------------------------
-    min_samples : int (>1)
-        Minimum number of samples at each point x. Each new point is initially
-        sampled min_samples times.
-    neighbor_sampling: float (>0, <1)
-        Each new point is initially sampled min_samples times.
     delta : float
-        The minimum value of the mean error.
-    alfa : float
-        The size of the interval of confidence of the estimate of the mean
-        is 1-2*alfa
-    max_samples: int
-    min_Delta_g
+        This parameter controls the resampling condition. A point is resampled
+        if its uncertainty is larger than delta times the smallest neighboring
+        interval.
+        We strongly recommend 0 < delta <= 1.
+    min_samples : int (0 < min_samples)
+        Minimum number of samples at each point x. Each new point is initially
+        sampled at least min_samples times.
+    neighbor_sampling : float (0 < neighbor_sampling < 1)
+        Each new point is initially sampled at least a (neighbor_sampling*100)%
+        of the average number of samples of its neighbors.
+    max_samples : int (min_samples < max_samples)
+        Maximum number of samples at each point x.
+    min_Delta_g : float (0 <= min_Delta_g)
+        Minimum uncertainty. If the uncertainty at a certain point is below this
+        threshold, the point will not be resampled again.
+    alfa : float (0 < alfa < 1)
+        The ize of the interval of confidence of the estimate of the mean
+        is 1-2*alfa.
+        We recommend to keep alfa=0.005.
     """
-    def __init__(self, function, bounds, loss_per_interval=None, min_samples=3, neighbor_sampling=0.3, delta=0.1, alfa=0.005, max_samples=np.inf, min_Delta_g=0):
+    def __init__(self, function, bounds, loss_per_interval=None, min_samples = 10, neighbor_sampling=0.3,
+                 delta=0.1, max_samples=np.inf, min_Delta_g=0, alfa=0.005):
+        # Asserts
+        
+
         super().__init__(function, bounds, loss_per_interval)
 
         self._data_samples = sortedcontainers.SortedDict() # This SortedDict contains all samples f(x) for each x
