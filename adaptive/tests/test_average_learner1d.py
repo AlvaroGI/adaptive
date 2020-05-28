@@ -1043,7 +1043,110 @@ def simple_liveplot(learner, goal = lambda l: l.total_samples()==500, N_batch = 
 #____________________________________________________________________
 #_______________FINAL VERSION PARALLELIZED LEARNER___________________
 #____________________________________________________________________
+# Change 1: learner.total_samples() --> learner.total_samples
+def plot_learner_(learner,equalaxes=False,ylim=None,alphafun=0.3,alphaline=1,alphabars=0.3,Nfun=200):
+    '''Plot learner'''
+    xfun = np.linspace(learner.bounds[0],learner.bounds[1],Nfun)
+    yfun = []
+    for xi in xfun:
+        yfun.append(learner.function(xi))
 
+    x, y = zip(*sorted(learner.data.items()))
+    try: # AverageLearner1D
+        yfun0 = []
+        for xi in xfun:
+            yfun0.append(learner.function(xi,sigma=0))
+
+        plt.plot(xfun,yfun0,color='k', linewidth=1)
+        plt.autoscale(False)
+        plt.plot(xfun,yfun,alpha=alphafun,color='tab:orange')
+
+        plt.plot(x, y, color='tab:blue', linewidth=2, alpha=alphaline)
+        _, err = zip(*sorted(learner._error_in_mean.items()))
+        plt.errorbar(x, y, yerr=err, linewidth=0, marker='o', color='k',
+                     markersize=2, elinewidth=1, capsize=3, capthick=1, alpha=alphabars)
+        plt.title('N=%d'%learner.total_samples)
+    except: # Learner1D
+        plt.plot(xfun,yfun,linewidth=5,alpha=alphafun,color='tab:orange')
+
+        plt.plot(x, y, linewidth=1, color='tab:blue', marker='o', markersize=2,
+                 markeredgecolor='k', markerfacecolor='k')
+        plt.title('N=%d'%len(learner.data))
+    plt.xlim(learner.bounds)
+    if equalaxes:
+        plt.gca().set_aspect('equal', adjustable='box')
+    if ylim:
+        plt.ylim(ylim)
+
+def run_N_(learner,N):
+    '''Runs the learner until it has N samples'''
+    from tqdm.notebook import tqdm
+    try: # AverageLearner1D
+        N0 = learner.total_samples
+        if N-N0>0:
+            for _ in tqdm(np.arange(N-N0)):
+                    xs, _ = learner.ask(1)
+                    for x in xs:
+                        y = learner.function(x)
+                        learner.tell(x, y)
+    except: # Learner1D
+        N0 = len(learner.data)
+        if N-N0>0:
+            for _ in tqdm(np.arange(N-N0)):
+                    xs, _ = learner.ask(1)
+                    for x in xs:
+                        y = learner.function(x)
+                        learner.tell(x, y)
+
+def simple_liveplot_(learner, goal = lambda l: l.total_samples==500, N_batch = 100, alphafun=0.3,alphaline=1,alphabars=0.3,N_fun=200):
+    import time
+    import pylab as pl
+    from IPython import display
+    xfun = np.linspace(learner.bounds[0],learner.bounds[1],N_fun)
+    try:
+        yfun0 = learner.function(xfun, sigma=0)
+    except:
+        yfun0 = []
+        for xi in xfun:
+            yfun0.append(learner.function(xi,sigma=0))
+
+    yfun = []
+    for xi in xfun:
+        yfun.append(learner.function(xi))
+    try:
+        while not goal(learner):
+            for i in np.arange(N_batch):
+                xs, _ = learner.ask(1)
+                for x in xs:
+                    y = learner.function(x)
+                    learner.tell(x, y)
+            x, y = zip(*sorted(learner.data.items()))
+            plt.cla()
+            try: # AverageLearner1D
+                plt.xlim(learner.bounds[0],learner.bounds[1])
+                plt.plot(xfun, yfun0, color='k', linewidth=1)
+                plt.plot(x, y, linewidth=2, alpha=alphaline)
+                plt.autoscale(False)
+
+                _, err = zip(*sorted(learner._error_in_mean.items()))
+                plt.errorbar(x, y, yerr=err, linewidth=0, marker='o', color='k',
+                             markersize=2, elinewidth=1, capsize=3, capthick=1, alpha=alphabars)
+                plt.title('N=%d, n=%d'%(learner.total_samples,len(learner.data)))
+                plt.plot(xfun, yfun, alpha=alphafun, color='tab:orange')
+            except: # Learner1D
+                plt.xlim(learner.bounds[0],learner.bounds[1])
+                plt.plot(xfun, yfun, alpha=alphafun ,color='tab:orange')
+                plt.plot(x, y, linewidth=1, color='tab:blue', marker='o', markersize=2,
+                         markeredgecolor='k', markerfacecolor='k')
+                plt.title('N=%d'%len(learner.data))
+            display.clear_output(wait=True)
+            display.display(plt.gcf())
+    except KeyboardInterrupt:
+        plt.cla()
+        display.clear_output(wait=True)
+        display.display(pl.gcf())
+        plot_learner_(learner, Nfun=N_fun)
+    display.clear_output(wait=True)
 
 
 #____________________________________________________________________
