@@ -45,8 +45,8 @@ class AverageLearner1D_parallel(Learner1D):
 
         We recommend to keep alfa=0.005.
     """
-    def __init__(self, function, bounds, loss_per_interval = None, delta = 0.1, alfa = 0.005,
-                 min_samples = 10, neighbor_sampling = 0.3, max_samples = np.inf, min_Delta_g = 0):
+    def __init__(self, function, bounds, loss_per_interval = None, delta = 0.2, alfa = 0.005,
+                 min_samples = 50, neighbor_sampling = 0.3, max_samples = np.inf, min_Delta_g = 0):
         # Asserts
         assert delta>0, 'delta should be positive (0 < delta <= 1).'
         assert alfa>0 and alfa<1, 'alfa should be positive (0 < alfa < 1).'
@@ -76,6 +76,15 @@ class AverageLearner1D_parallel(Learner1D):
         self._rescaled_error_in_mean = error_in_mean_initializer() # {xii: _error_in_mean[xii]/min(_distances[xi],
                                                                    #  _distances[xii], ...}
 
+    @property
+    def total_samples(self):
+        '''Returns the total number of samples'''
+        if not len(self._data):
+            return 0
+        else:
+            _, ns = zip(*self._number_samples.items())
+            return sum(ns)
+
     def ask(self, n, tell_pending=True):
         """Return 'n' points that are expected to maximally reduce the loss."""
         # If some point is undersampled, resample it
@@ -85,7 +94,7 @@ class AverageLearner1D_parallel(Learner1D):
             points, loss_improvements = self._ask_for_more_samples(x,n)
         # If less than 2 points were sampled, sample a new one
         elif not self.data.__len__() or self.data.__len__() == 1:
-            points, loss_improvements = self._ask_points_without_adding(n)
+            points, loss_improvements = self._ask_for_new_point(n)
         # Else, check the resampling condition
         else:
             if len(self._rescaled_error_in_mean): # This is in case _rescaled_error_in_mean is empty (e.g. when sigma=0)
@@ -94,9 +103,9 @@ class AverageLearner1D_parallel(Learner1D):
                 if (resc_error > self.delta):
                         points, loss_improvements = self._ask_for_more_samples(x,n)
                 else:
-                        points, loss_improvements = self._ask_points_without_adding(n)
+                        points, loss_improvements = self._ask_for_new_point(n)
             else:
-                points, loss_improvements = self._ask_points_without_adding(n)
+                points, loss_improvements = self._ask_for_new_point(n)
 
         if tell_pending:
             #print('tell_pending must be redesigned carefully')
@@ -108,6 +117,13 @@ class AverageLearner1D_parallel(Learner1D):
     def _ask_for_more_samples(self,x,n):
         points = [x] * n
         loss_improvements = [0] * n
+        #print('loss_improvements not implemented yet')
+        return points, loss_improvements
+
+    def _ask_for_new_point(self,n):
+        points, loss_improvements = self._ask_points_without_adding(1)
+        points = points * n
+        loss_improvements = loss_improvements * n
         #print('loss_improvements not implemented yet')
         return points, loss_improvements
 
@@ -283,14 +299,30 @@ class AverageLearner1D_parallel(Learner1D):
         #print('Not implemented yet.')
         return
 
-    @property
-    def total_samples(self):
-        '''Returns the total number of samples'''
-        if not len(self._data):
-            return 0
+    def plot(self):
+        """Returns a plot of the evaluated data with error bars.
+
+        Returns
+        -------
+        plot : `holoviews.element.Scatter` (if vdim=1)\
+               else `holoviews.element.Path`
+            Plot of the evaluated data.
+        """
+        hv = ensure_holoviews()
+        if not self._data:
+            p = hv.Scatter([]) * hv.ErrorBars([]) * hv.Path([])
+        elif not self.vdim > 1:
+            p = hv.Scatter(self.data) * hv.ErrorBars([(x, self.data[x], self._error_in_mean[x]) for x in self.data]) * hv.Path([])
         else:
-            _, ns = zip(*self._number_samples.items())
-            return sum(ns)
+            raise Exception('plot() not implemented for vector functions.')
+            xs, ys = zip(*sorted(self.data.items()))
+            p = hv.Path((xs, ys)) * hv.Scatter([])
+
+        # Plot with 5% empty margins such that the boundary points are visible
+        margin = 0.05 * (self.bounds[1] - self.bounds[0])
+        plot_bounds = (self.bounds[0] - margin, self.bounds[1] + margin)
+
+        return p.redim(x=dict(range=plot_bounds))
 
 def error_in_mean_initializer():
     '''This initialization orders the dictionary from large to small values'''

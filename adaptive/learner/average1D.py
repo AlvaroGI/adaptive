@@ -109,7 +109,6 @@ class AverageLearner1D(Learner1D):
         """Return 'n' points that are expected to maximally reduce the loss."""
         assert isinstance(self._error_in_mean, dict)
         assert isinstance(self._number_samples, dict)
-
         if self.strategy==3:
             points, loss_improvements = self._ask_points_without_adding(n)
         # If self.data contains no points, proceed as in Learner1D
