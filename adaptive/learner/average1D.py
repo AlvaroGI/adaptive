@@ -551,6 +551,9 @@ class AverageLearner1D(Learner1D):
             self._update_interval_sizes(x)
             self._update_rescaled_error_in_mean(x,'resampled')
             #self._update_relative_interval_sizes(x)
+            if (self._rescaled_error_in_mean.__contains__(x)
+                and (self._error_in_mean[x] <= self._min_Delta_g or self._number_samples[x] >= self._max_samples)):
+                _ = self._rescaled_error_in_mean.pop(x)
         elif self.strategy==6:
             self._update_interval_sizes(x)
         elif self.strategy==7:
@@ -563,9 +566,7 @@ class AverageLearner1D(Learner1D):
         #--------------
         #--------------
         #--------------
-        if (self._rescaled_error_in_mean.__contains__(x)
-            and (self._error_in_mean[x] <= self._min_Delta_g or self._number_samples[x] >= self._max_samples)):
-            _ = self._rescaled_error_in_mean.pop(x)
+
         #--------------
         #--------------
         #--------------
