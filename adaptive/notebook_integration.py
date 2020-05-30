@@ -259,6 +259,9 @@ def _info_html(runner):
         info.append(("# of points", runner.learner.npoints))
 
     with suppress(Exception):
+        info.append(("# of samples", runner.learner.total_samples))
+
+    with suppress(Exception):
         info.append(("latest loss", f'{runner.learner._cache["loss"]:.3f}'))
 
     template = '<dt class="ignore-css">{}</dt><dd>{}</dd>'

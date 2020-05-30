@@ -108,7 +108,6 @@ class AverageLearner1D_parallel(Learner1D):
                 points, loss_improvements = self._ask_for_new_point(n)
 
         if tell_pending:
-            #print('tell_pending must be redesigned carefully')
             for p in points:
                 self.tell_pending(p)
 
@@ -132,8 +131,11 @@ class AverageLearner1D_parallel(Learner1D):
         return points, loss_improvements
 
     def tell_pending(self, x):
-        self.pending_points.add(x) # Note that a set cannot contain duplicates
-        if x not in self._data:
+        if x in self._data:
+            self.pending_points.add(x) # Note that a set cannot contain duplicates
+            return
+        else:
+            self.pending_points.add(x) # Note that a set cannot contain duplicates
             self._update_neighbors(x, self.neighbors_combined)
             self._update_losses(x, real=False)
 
@@ -149,12 +151,11 @@ class AverageLearner1D_parallel(Learner1D):
 
         if not self._data.__contains__(x):
             self._update_data(x, y, 'new')
-            self.pending_points.discard(x)
             self._update_data_structures(x, y, 'new')
         else:
             self._update_data(x, y, 'resampled')
-            self.pending_points.discard(x)
             self._update_data_structures(x, y, 'resampled')
+        self.pending_points.discard(x)
 
     def _update_rescaled_error_in_mean(self, x, point_type):
         '''Updates self._rescaled_error_in_mean; point_type must be "new" or
@@ -361,7 +362,6 @@ class AverageLearner1D_parallel(Learner1D):
             break
 
         return
-
 
     def plot(self):
         """Returns a plot of the evaluated data with error bars.
